@@ -6,7 +6,7 @@ from usage_transformation import process_data, deduplicate_output
 
 # Page configuration
 st.set_page_config(
-    page_title="SafelyYou Usage Transformation App",
+    page_title="SafelyYou Custom App",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -43,7 +43,7 @@ def check_api_key(api_key):
 
 def show_authentication():
     """Display authentication screen for API key input."""
-    st.title("🔐 SafelyYou Usage Transformation - Authentication")
+    st.title("🔐 SafelyYou Custom App - Authentication")
     st.markdown("---")
     
     st.info("Please enter your Tabs API key to access the application.")
