@@ -454,6 +454,12 @@ def process_data(dataframes):
             print(f"          - Product Name: {product_name}")
             print(f"          - Event Type Name: {event_type_name}")
             
+            # Validate event_type_name is not blank
+            if pd.isna(event_type_name) or not str(event_type_name).strip():
+                print(f"          ✗ Event Type Name is blank or missing")
+                print(f"          → Skipping this row")
+                continue
+            
             # STEP 2.2: Find mapping in Customer Mapping CSV
             print(f"\n  [2.1.2] Looking up Customer Mapping...")
             mapping_rows = customer_mapping[customer_mapping['Tabs customer ID'] == customer_id]
