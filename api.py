@@ -704,11 +704,37 @@ def push_bt(csv_file_data, merchant_name='safelyyou'):
                 csv_string = csv_string.decode('utf-8')
         
         # Convert CSV string to DataFrame (tab-delimited)
+        # Try tab-delimited first, fall back to comma if that results in only 1 column
         csv_buffer = io.StringIO(csv_string)
         df = pd.read_csv(csv_buffer, delimiter='\t')
         
+        # Check if parsing worked (if only 1 column, probably wrong delimiter)
+        if len(df.columns) == 1:
+            print(f"⚠ push_bt: Tab delimiter resulted in 1 column, trying comma delimiter")
+            csv_buffer = io.StringIO(csv_string)
+            df = pd.read_csv(csv_buffer, delimiter=',')
+        
+        # Add debug output
+        print(f"✓ push_bt: Parsed CSV with {len(df)} rows")
+        print(f"  Columns found: {list(df.columns)}")
+        if len(df) > 0:
+            print(f"  First row data:")
+            first_row = df.iloc[0]
+            for col in df.columns:
+                val = first_row.get(col, 'NOT FOUND')
+                is_na = pd.isna(val) if pd.notna(val) else True
+                print(f"    '{col}': '{val}' (type: {type(val).__name__}, is_na: {is_na})")
+            customer_name_val = first_row.get('customer name', 'NOT FOUND')
+            customer_name_is_na = pd.isna(customer_name_val) if pd.notna(customer_name_val) else True
+            print(f"  Customer name value (row 1): '{customer_name_val}'")
+            print(f"  Customer name type: {type(customer_name_val)}")
+            print(f"  Customer name is NaN: {customer_name_is_na}")
+            print(f"  Customer name empty/whitespace: {not str(customer_name_val).strip() if customer_name_val != 'NOT FOUND' else 'N/A'}")
+        
     except Exception as e:
         print(f"✗ push_bt: Failed to parse CSV data: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
         # Return a mock response object with error status
         class MockResponse:
             def __init__(self, status_code, error_msg):

@@ -350,7 +350,6 @@ def page_flat_bt_upload():
     
     if bt_file is not None:
         st.success(f"✓ Uploaded: {bt_file.name}")
-        st.session_state['flat_bt_file'] = bt_file
         
         # Show preview
         try:
@@ -365,7 +364,9 @@ def page_flat_bt_upload():
     # Upload button
     st.markdown("---")
     if st.button("Upload Billing Terms", type="primary", key="upload_bt_button"):
-        if 'flat_bt_file' not in st.session_state or st.session_state.get('flat_bt_file') is None:
+        # Access file from session state (managed by file_uploader widget)
+        uploaded_file = st.session_state.get('flat_bt_file')
+        if uploaded_file is None:
             st.error("Please upload a CSV file first.")
         elif 'tabs_api_key' not in st.session_state or not st.session_state.get('authenticated', False):
             st.error("API key not found or not authenticated. Please authenticate first.")
@@ -374,12 +375,11 @@ def page_flat_bt_upload():
                 from api import push_bt
                 
                 # Reset file pointer
-                bt_file = st.session_state['flat_bt_file']
-                bt_file.seek(0)
+                uploaded_file.seek(0)
                 
                 with st.spinner("Uploading billing terms to Tabs API..."):
                     # Call push_bt function
-                    result = push_bt(bt_file, merchant_name='safelyyou')
+                    result = push_bt(uploaded_file, merchant_name='safelyyou')
                     
                     # Display results
                     if hasattr(result, 'status_code'):
