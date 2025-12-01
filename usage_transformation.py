@@ -431,7 +431,8 @@ def process_data(dataframes):
     combo_product_report = dataframes['combo_product_report']
     
     output_rows = []
-    current_date = datetime.now().strftime('%m/%d/%Y')
+    # Set current date once at the start in YYYY-MM-DD format (date only, no time)
+    current_date = datetime.now().strftime('%Y-%m-%d')
     
     print(f"\nCurrent Date for Output: {current_date}")
     print(f"Total rows to process from Usage BT Report: {len(usage_bt)}")
@@ -556,24 +557,29 @@ def process_data(dataframes):
                     print(f"          → Found {len(matched_rows)} fuzzy-matched row(s)")
                     
                     # Parse Active Date for each matched row and filter out future dates
-                    current_date = datetime.now()
+                    # Use date only (no time) for comparison
+                    current_date_obj = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
                     valid_rows = []
                     
-                    print(f"          → Processing Active Dates (current date: {current_date.strftime('%m/%d/%Y')})...")
+                    print(f"          → Processing Active Dates (current date: {current_date_obj.strftime('%Y-%m-%d')})...")
                     for idx, (row_idx, min_row) in enumerate(matched_rows):
                         active_date_value = min_row.get('Active Date', None)
-                        parsed_date = parse_active_date(active_date_value, current_date)
+                        parsed_date = parse_active_date(active_date_value, current_date_obj)
                         
                         if parsed_date is None:
                             print(f"             Row {idx + 1}: Invalid or missing Active Date - skipping")
                             continue
                         
-                        if parsed_date > current_date:
-                            print(f"             Row {idx + 1}: Active Date {parsed_date.strftime('%m/%d/%Y')} is in future - filtering out")
+                        # Normalize parsed_date to date only (no time)
+                        if isinstance(parsed_date, datetime):
+                            parsed_date = parsed_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                        
+                        if parsed_date > current_date_obj:
+                            print(f"             Row {idx + 1}: Active Date {parsed_date.strftime('%Y-%m-%d')} is in future - filtering out")
                             continue
                         
                         valid_rows.append((row_idx, min_row, parsed_date))
-                        print(f"             Row {idx + 1}: Active Date {parsed_date.strftime('%m/%d/%Y')} is valid")
+                        print(f"             Row {idx + 1}: Active Date {parsed_date.strftime('%Y-%m-%d')} is valid")
                     
                     if not valid_rows:
                         print(f"          ⚠ All matched rows have invalid or future Active Dates")
@@ -585,7 +591,7 @@ def process_data(dataframes):
                         selected_min_row = selected_row[1]
                         selected_date = selected_row[2]
                         
-                        print(f"          → Selected row with latest Active Date: {selected_date.strftime('%m/%d/%Y')}")
+                        print(f"          → Selected row with latest Active Date: {selected_date.strftime('%Y-%m-%d')}")
                         print(f"          → Product: '{selected_min_row['Product name']}'")
                         
                         min_value = selected_min_row['minimum quantity']
