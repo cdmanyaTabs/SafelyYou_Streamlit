@@ -1,5 +1,5 @@
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import numpy as np
 import re
@@ -431,8 +431,11 @@ def process_data(dataframes):
     combo_product_report = dataframes['combo_product_report']
     
     output_rows = []
-    # Set current date once at the start in YYYY-MM-DD format (date only, no time)
-    current_date = datetime.now().strftime('%Y-%m-%d')
+    # Calculate last day of previous month
+    today = datetime.now()
+    first_day_current = datetime(today.year, today.month, 1)
+    last_day_previous = first_day_current - timedelta(days=1)
+    current_date = last_day_previous.strftime('%Y-%m-%d')
     
     print(f"\nCurrent Date for Output: {current_date}")
     print(f"Total rows to process from Usage BT Report: {len(usage_bt)}")
@@ -564,7 +567,11 @@ def process_data(dataframes):
                     
                     # Parse Active Date for each matched row and filter out future dates
                     # Use date only (no time) for comparison
-                    current_date_obj = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                    # Calculate last day of previous month (same as current_date)
+                    today = datetime.now()
+                    first_day_current = datetime(today.year, today.month, 1)
+                    last_day_previous = first_day_current - timedelta(days=1)
+                    current_date_obj = last_day_previous.replace(hour=0, minute=0, second=0, microsecond=0)
                     valid_rows = []
                     
                     print(f"          → Processing Active Dates (current date: {current_date_obj.strftime('%Y-%m-%d')})...")
