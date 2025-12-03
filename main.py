@@ -152,7 +152,7 @@ def page_usage_transformation():
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("1. Usage BT Report")
+        st.subheader("1. Tabs Usage Products")
         use_api_for_usage_bt = st.checkbox(
             "Generate from Tabs API instead of uploading file",
             key="use_api_for_usage_bt",
@@ -188,30 +188,7 @@ def page_usage_transformation():
             st.success(f"✓ Uploaded: {customer_mapping_file.name}")
             st.session_state['customer_mapping_file'] = customer_mapping_file
         
-        st.subheader("3. Community Quantity Data Report")
-        community_quantity_file = st.file_uploader(
-            "Upload Community Quantity Data Report CSV",
-            type=['csv'],
-            key="community_quantity",
-            help="Upload the Community Quantity Data Report CSV file"
-        )
-        if community_quantity_file is not None:
-            st.success(f"✓ Uploaded: {community_quantity_file.name}")
-            st.session_state['community_quantity_file'] = community_quantity_file
-    
-    with col2:
-        st.subheader("4. Business Quantity Data Report")
-        business_quantity_file = st.file_uploader(
-            "Upload Business Quantity Data Report CSV",
-            type=['csv'],
-            key="business_quantity",
-            help="Upload the Business Quantity Data Report CSV file"
-        )
-        if business_quantity_file is not None:
-            st.success(f"✓ Uploaded: {business_quantity_file.name}")
-            st.session_state['business_quantity_file'] = business_quantity_file
-        
-        st.subheader("5. Minimum Report")
+        st.subheader("3. Product Minimums Report")
         minimum_report_file = st.file_uploader(
             "Upload Minimum Report CSV",
             type=['csv'],
@@ -222,7 +199,30 @@ def page_usage_transformation():
             st.success(f"✓ Uploaded: {minimum_report_file.name}")
             st.session_state['minimum_report_file'] = minimum_report_file
         
-        st.subheader("6. Combo Product Report")
+    with col2:
+        st.subheader("4. By Community Data Report")
+        community_quantity_file = st.file_uploader(
+            "Upload Community Quantity Data Report CSV",
+            type=['csv'],
+            key="community_quantity",
+            help="Upload the Community Quantity Data Report CSV file"
+        )
+        if community_quantity_file is not None:
+            st.success(f"✓ Uploaded: {community_quantity_file.name}")
+            st.session_state['community_quantity_file'] = community_quantity_file
+        
+        st.subheader("5. By Business Unit Data Report")
+        business_quantity_file = st.file_uploader(
+            "Upload Business Quantity Data Report CSV",
+            type=['csv'],
+            key="business_quantity",
+            help="Upload the Business Quantity Data Report CSV file"
+        )
+        if business_quantity_file is not None:
+            st.success(f"✓ Uploaded: {business_quantity_file.name}")
+            st.session_state['business_quantity_file'] = business_quantity_file
+        
+        st.subheader("6. Combination Product Report")
         combo_product_report_file = st.file_uploader(
             "Upload Combo Product Report CSV (Tab-delimited)",
             type=['csv'],
@@ -334,7 +334,7 @@ def page_flat_bt_upload():
     
     # Main content area
     st.header("Upload Billing Terms")
-    st.write("Upload a CSV file containing billing terms to create obligations in Tabs.")
+    st.write("Upload a CSV file containing billing terms to create obligations in Tabs. Here is a billing terms template file: https://docs.google.com/spreadsheets/d/1TsTDZ6KJKp5QTSD4kH1tUitjcPchtDqRiyaptkwm06c/edit?usp=sharing")
     st.write("Contact your Tabs account manager via Slack if you have any questions.")
     
     st.markdown("---")
