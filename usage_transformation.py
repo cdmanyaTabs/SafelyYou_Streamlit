@@ -572,6 +572,18 @@ def generate_usage_bt_report_from_api():
                     skipped_count += 1
                     continue
                 
+                # Extract billing schedule and check billing type
+                billing_schedule = obligation.get("billingSchedule", {})
+                billing_type = billing_schedule.get("billingType")
+                
+                # FILTER: Only include UNIT billing type (exclude FLAT and others)
+                if billing_type != "UNIT":
+                    if str(customer_id) == TARGET_DEBUG_CUSTOMER:
+                        logging.info(f"[DEBUG_TARGET] ✗✗✗ FILTERED OUT: Non-UNIT billing type: {billing_type}")
+                        print(f"[DEBUG] Target customer EXCLUDED due to billing type: {billing_type}")
+                    skipped_count += 1
+                    continue
+                
                 # DEBUG: Track target customer
                 if str(customer_id) == "4a5a2962-bcf8-4a8b-a434-e1868072b0bd":
                     logging.info("\n[DEBUG_GENERATE] ✓✓✓ TARGET CUSTOMER FOUND IN OBLIGATIONS ✓✓✓")
@@ -580,14 +592,13 @@ def generate_usage_bt_report_from_api():
                     logging.info(f"[DEBUG_GENERATE] Customer ID: {customer_id}")
                     logging.info(f"[DEBUG_GENERATE] Service Start Date: {obligation.get('serviceStartDate')}")
                     logging.info(f"[DEBUG_GENERATE] Service End Date: {obligation.get('serviceEndDate')}")
-                    billing_schedule = obligation.get("billingSchedule", {})
                     logging.info(f"[DEBUG_GENERATE] Billing Schedule Name: {billing_schedule.get('name')}")
                     logging.info(f"[DEBUG_GENERATE] Billing Schedule End Date: {billing_schedule.get('endDate')}")
                     logging.info(f"[DEBUG_GENERATE] Event Type ID: {billing_schedule.get('eventTypeId')}")
+                    logging.info(f"[DEBUG_GENERATE] Billing Type: {billing_type}")
                     print("[DEBUG] TARGET CUSTOMER FOUND IN OBLIGATIONS - Check debug_output.log")
                 
-                # Extract Product name from billingSchedule
-                billing_schedule = obligation.get("billingSchedule", {})
+                # Extract Product name from billingSchedule (already extracted above)
                 product_name = billing_schedule.get("name", "")
                 
                 # Extract eventTypeId and lookup event type name
@@ -629,7 +640,7 @@ def generate_usage_bt_report_from_api():
             usage_bt_df = pd.DataFrame(report_rows)
             print(f"      ✓ Generated {len(usage_bt_df)} rows")
             if skipped_count > 0:
-                print(f"      ⚠ Skipped {skipped_count} obligations (missing contractId/customerId or excluded parent)")
+                print(f"      ⚠ Skipped {skipped_count} obligations (missing contractId/customerId, non-UNIT billing type, or excluded parent)")
         else:
             print(f"      ⚠ No valid rows generated")
             usage_bt_df = pd.DataFrame(columns=['customer ID', 'Product name', 'event type name'])

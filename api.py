@@ -28,7 +28,7 @@ def get_all_obligations():
     first_day_current = datetime(today.year, today.month, 1)
     last_day_previous = first_day_current - timedelta(days=1)
     date_filter_string = last_day_previous.strftime('%Y-%m-%d')
-    url = f"https://integrators.prod.api.tabsplatform.com/v3/obligations?limit=10000&filter=serviceEndDate:gte:{date_filter_string},endDate:gte:{date_filter_string}"
+    url = f"https://integrators.prod.api.tabsplatform.com/v3/obligations?limit=10000&filter=serviceEndDate:gte:{date_filter_string},endDate:gte:{date_filter_string},startDate:lte:{date_filter_string}"
     headers = {
         "Authorization": f"{st.session_state['tabs_api_key']}"
     }
@@ -37,7 +37,7 @@ def get_all_obligations():
     
     # DEBUG: Log filter and count
     logging.info("\n[DEBUG_API] get_all_obligations() called")
-    logging.info(f"[DEBUG_API] Date filter: serviceEndDate >= {date_filter_string}, endDate >= {date_filter_string}")
+    logging.info(f"[DEBUG_API] Date filter: serviceEndDate >= {date_filter_string}, endDate >= {date_filter_string}, startDate <= {date_filter_string}")
     obligations = result.get("payload", {}).get("data", [])
     logging.info(f"[DEBUG_API] Total obligations fetched: {len(obligations)}")
     
