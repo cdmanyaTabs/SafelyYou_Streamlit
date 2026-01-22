@@ -74,19 +74,17 @@ def show_authentication():
     st.markdown("---")
     st.caption("Contact your Tabs account manager via Slack if you need assistance.")
 
-def load_uploaded_files(uploaded_files_dict, use_api_for_usage_bt=False):
+def load_uploaded_files(uploaded_files_dict):
     """
-    Load uploaded CSV files into DataFrames.
+    Load uploaded CSV files into DataFrames and generate Usage BT Report from API.
     
     Args:
         uploaded_files_dict: Dictionary with keys matching usage_transformation.py structure:
-            - 'usage_bt': Usage BT Report CSV (ignored if use_api_for_usage_bt=True)
             - 'customer_mapping': Customer Mapping CSV
             - 'community_quantity': Community Quantity Data Report CSV
             - 'business_quantity': Business Quantity Data Report CSV
             - 'minimum_report': Minimum Report CSV
-            - 'combo_product_report': Combo Product Report CSV (tab-delimited)
-        use_api_for_usage_bt: If True, generate Usage BT Report from API instead of loading from file
+            - 'combo_product_report': Combo Product Report CSV (auto-detects comma or tab delimiter)
     
     Returns:
         dict: Dictionary of DataFrames matching usage_transformation.py structure
@@ -96,12 +94,8 @@ def load_uploaded_files(uploaded_files_dict, use_api_for_usage_bt=False):
     dataframes = {}
     
     try:
-        # Load or generate Usage BT Report
-        if use_api_for_usage_bt:
-            dataframes['usage_bt'] = generate_usage_bt_report_from_api()
-        elif uploaded_files_dict.get('usage_bt'):
-            uploaded_files_dict['usage_bt'].seek(0)
-            dataframes['usage_bt'] = pd.read_csv(uploaded_files_dict['usage_bt'])
+        # Always generate Usage BT Report from API
+        dataframes['usage_bt'] = generate_usage_bt_report_from_api()
         
         # Load Customer Mapping
         if uploaded_files_dict.get('customer_mapping'):
@@ -123,13 +117,21 @@ def load_uploaded_files(uploaded_files_dict, use_api_for_usage_bt=False):
             uploaded_files_dict['minimum_report'].seek(0)
             dataframes['minimum_report'] = pd.read_csv(uploaded_files_dict['minimum_report'])
         
-        # Load Combo Product Report (tab-delimited)
+        # Load Combo Product Report (auto-detect delimiter)
         if uploaded_files_dict.get('combo_product_report'):
             uploaded_files_dict['combo_product_report'].seek(0)
+            # Try tab-delimited first
             dataframes['combo_product_report'] = pd.read_csv(
                 uploaded_files_dict['combo_product_report'], 
                 delimiter='\t'
             )
+            # If only 1 column detected, it's probably comma-delimited
+            if len(dataframes['combo_product_report'].columns) == 1:
+                uploaded_files_dict['combo_product_report'].seek(0)
+                dataframes['combo_product_report'] = pd.read_csv(
+                    uploaded_files_dict['combo_product_report'], 
+                    delimiter=','
+                )
         
     except Exception as e:
         raise Exception(f"Error loading files: {str(e)}")
@@ -143,7 +145,8 @@ def page_usage_transformation():
     
     # Main content area
     st.header("Usage Transformation Processing")
-    st.write("Upload the required CSV files to process usage transformation. All 6 files are required before processing.")
+    st.write("Upload the required CSV files to process usage transformation. All 5 files are required before processing.")
+    st.write("**Note:** Tabs Usage Products are automatically generated from the Tabs API.")
     st.write("Contact your Tabs account manager via Slack if you have any questions.")
     
     st.markdown("---")
@@ -153,29 +156,12 @@ def page_usage_transformation():
     
     with col1:
         st.subheader("1. Tabs Usage Products")
-        use_api_for_usage_bt = st.checkbox(
-            "Generate from Tabs API instead of uploading file",
-            key="use_api_for_usage_bt",
-            help="Check this to generate Usage BT Report from Tabs API (requires API key in session state)"
-        )
-        
-        if not use_api_for_usage_bt:
-            usage_bt_file = st.file_uploader(
-                "Upload Usage BT Report CSV",
-                type=['csv'],
-                key="usage_bt",
-                help="Upload the Usage BT Report CSV file"
-            )
-            if usage_bt_file is not None:
-                st.success(f"✓ Uploaded: {usage_bt_file.name}")
-                st.session_state['usage_bt_file'] = usage_bt_file
-        else:
-            st.info("ℹ️ Usage BT Report will be generated from Tabs API")
-            if 'tabs_api_key' not in st.session_state or not st.session_state.get('authenticated', False):
-                st.warning("⚠️ API key not found. Please authenticate using the authentication page.")
-                if st.button("Go to Authentication", key="go_to_auth"):
-                    st.session_state['authenticated'] = False
-                    st.rerun()
+        st.info("ℹ️ Usage BT Report will be automatically generated from Tabs API")
+        if 'tabs_api_key' not in st.session_state or not st.session_state.get('authenticated', False):
+            st.warning("⚠️ API key not found. Please authenticate using the authentication page.")
+            if st.button("Go to Authentication", key="go_to_auth"):
+                st.session_state['authenticated'] = False
+                st.rerun()
         
         st.subheader("2. Customer Mapping")
         customer_mapping_file = st.file_uploader(
@@ -224,10 +210,10 @@ def page_usage_transformation():
         
         st.subheader("6. Combination Product Report")
         combo_product_report_file = st.file_uploader(
-            "Upload Combo Product Report CSV (Tab-delimited)",
+            "Upload Combo Product Report CSV",
             type=['csv'],
             key="combo_product_report",
-            help="Upload the Combo Product Report CSV file (tab-delimited format)"
+            help="Upload the Combo Product Report CSV file (comma or tab-delimited)"
         )
         if combo_product_report_file is not None:
             st.success(f"✓ Uploaded: {combo_product_report_file.name}")
@@ -236,12 +222,8 @@ def page_usage_transformation():
     # Process button
     st.markdown("---")
     if st.button("Process Files", type="primary", key="process_button"):
-        # Check if using API for Usage BT Report
-        use_api_for_usage_bt = st.session_state.get('use_api_for_usage_bt', False)
-        
-        # Validate all required files are uploaded (skip usage_bt if using API)
+        # Validate all required files are uploaded
         required_files = {
-            'usage_bt': None if use_api_for_usage_bt else st.session_state.get('usage_bt_file'),
             'customer_mapping': st.session_state.get('customer_mapping_file'),
             'community_quantity': st.session_state.get('community_quantity_file'),
             'business_quantity': st.session_state.get('business_quantity_file'),
@@ -249,32 +231,36 @@ def page_usage_transformation():
             'combo_product_report': st.session_state.get('combo_product_report_file')
         }
         
-        # Check API key if using API
-        if use_api_for_usage_bt and ('tabs_api_key' not in st.session_state or not st.session_state.get('authenticated', False)):
+        # Check API key
+        if 'tabs_api_key' not in st.session_state or not st.session_state.get('authenticated', False):
             st.error("API key not found or not authenticated. Cannot generate Usage BT Report from API.")
             if st.button("Go to Authentication", key="go_to_auth_from_process"):
                 st.session_state['authenticated'] = False
                 st.rerun()
         else:
-            missing_files = [key for key, file in required_files.items() if file is None and not (key == 'usage_bt' and use_api_for_usage_bt)]
+            missing_files = [key for key, file in required_files.items() if file is None]
             
             if missing_files:
                 st.error(f"Please upload all required files. Missing: {', '.join(missing_files)}")
             else:
                 try:
                     # Step 1: Load files
-                    with st.spinner("Step 1/3: Loading CSV files..."):
-                        dataframes = load_uploaded_files(required_files, use_api_for_usage_bt=use_api_for_usage_bt)
+                    with st.spinner("Step 1/3: Loading CSV files and generating Usage BT Report from API..."):
+                        dataframes = load_uploaded_files(required_files)
                         st.success(f"✓ Loaded {len(dataframes)} files successfully")
                     
                     # Step 2: Process data
+                    st.info("📝 Debug output is being written to: `/Users/chiragdas/Documents/GitHub/SafelyYou_Streamlit/debug_output.log`")
                     with st.spinner("Step 2/3: Processing data transformation..."):
-                        output_df = process_data(dataframes)
+                        output_df, unmapped_customers = process_data(dataframes)
                         if output_df is not None and not output_df.empty:
                             st.success(f"✓ Processed {len(output_df)} rows")
                         else:
                             st.warning("⚠ No data processed. Output is empty.")
                             output_df = None
+                        
+                        # Store unmapped customers in session state
+                        st.session_state['unmapped_customers'] = unmapped_customers if unmapped_customers else []
                     
                     # Step 3: Deduplicate output
                     if output_df is not None and not output_df.empty:
@@ -326,6 +312,28 @@ def page_usage_transformation():
                 mime="text/csv",
                 key="download_output"
             )
+            
+            # Display unmapped customers if any
+            unmapped_customers = st.session_state.get('unmapped_customers', [])
+            if unmapped_customers and len(unmapped_customers) > 0:
+                st.markdown("---")
+                st.warning(f"⚠️ {len(unmapped_customers)} customer(s) could not be mapped and were excluded from output")
+                
+                with st.expander(f"View {len(unmapped_customers)} Unmapped Customers", expanded=False):
+                    unmapped_df = pd.DataFrame(unmapped_customers)
+                    st.dataframe(unmapped_df, use_container_width=True)
+                    
+                    # Allow download of unmapped customers
+                    unmapped_csv = unmapped_df.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download Unmapped Customers CSV",
+                        data=unmapped_csv,
+                        file_name="unmapped_customers.csv",
+                        mime="text/csv",
+                        key="download_unmapped"
+                    )
+            else:
+                st.success("✅ All customers were successfully mapped!")
 
 # Flat BT Upload Page
 def page_flat_bt_upload():
@@ -348,6 +356,15 @@ def page_flat_bt_upload():
         help="Upload the CSV file containing billing terms data"
     )
     
+    # Session state management for validation tracking
+    # Check if file changed - reset validation if different file
+    if bt_file is not None:
+        current_file_name = bt_file.name
+        if st.session_state.get('validated_file_name') != current_file_name:
+            st.session_state['validation_completed'] = False
+            st.session_state['validation_results'] = None
+            st.session_state['validated_file_name'] = current_file_name
+    
     if bt_file is not None:
         st.success(f"✓ Uploaded: {bt_file.name}")
         
@@ -360,10 +377,99 @@ def page_flat_bt_upload():
                 st.dataframe(preview_df.head(10))
         except Exception as e:
             st.warning(f"Could not preview file: {str(e)}")
+        
+        # Validate Customers button
+        st.markdown("---")
+        st.subheader("Step 1: Validate Customer Names")
+        st.write("Check which customers in your CSV can be found in the system before creating obligations.")
+        
+        if st.button("🔍 Validate Customers", type="secondary", key="validate_customers_button"):
+            uploaded_file = st.session_state.get('flat_bt_file')
+            if uploaded_file is None:
+                st.error("Please upload a CSV file first.")
+            elif 'tabs_api_key' not in st.session_state or not st.session_state.get('authenticated', False):
+                st.error("API key not found or not authenticated. Please authenticate first.")
+            else:
+                try:
+                    from api import validate_bt_customers
+                    
+                    # Reset file pointer
+                    uploaded_file.seek(0)
+                    
+                    with st.spinner("Validating customer names..."):
+                        # Call validation function
+                        results = validate_bt_customers(uploaded_file)
+                        
+                        # Store results in session state
+                        st.session_state['validation_completed'] = True
+                        st.session_state['validation_results'] = results
+                        
+                except Exception as e:
+                    st.error(f"Error during validation: {str(e)}")
+                    import traceback
+                    with st.expander("Error Details"):
+                        st.code(traceback.format_exc())
+        
+        # Display validation results if available
+        if st.session_state.get('validation_completed', False) and st.session_state.get('validation_results'):
+            results = st.session_state['validation_results']
+            
+            st.markdown("---")
+            st.subheader("Validation Results")
+            
+            # Summary metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Rows", results['total_rows'])
+            with col2:
+                st.metric("Customers Found", results['found_count'], 
+                         delta=None if results['found_count'] == results['total_rows'] else "")
+            with col3:
+                st.metric("Not Found", results['unfound_count'],
+                         delta=f"-{results['unfound_count']}" if results['unfound_count'] > 0 else "0")
+            
+            # Show unfound customers prominently if any
+            if results['unfound_count'] > 0:
+                st.error(f"⚠️ {results['unfound_count']} customer(s) could not be found in the system:")
+                unfound_df = pd.DataFrame(results['unfound_customers'])
+                st.dataframe(unfound_df, use_container_width=True)
+                st.warning("**Note:** Rows with unfound customers will be skipped during upload. You can still proceed with the upload for the customers that were found.")
+            else:
+                st.success("✅ All customers found in the system!")
+            
+            # Show found customers in expander
+            if results['found_count'] > 0:
+                with st.expander(f"✓ View {results['found_count']} Found Customer(s)"):
+                    found_df = pd.DataFrame(results['found_customers'])
+                    st.dataframe(found_df, use_container_width=True)
+            
+            # Show any parsing errors
+            if results.get('errors'):
+                with st.expander("⚠️ View Validation Errors"):
+                    for error in results['errors']:
+                        st.warning(error)
     
     # Upload button
     st.markdown("---")
-    if st.button("Upload Billing Terms", type="primary", key="upload_bt_button"):
+    st.subheader("Step 2: Upload Billing Terms")
+    
+    # Check if validation completed
+    validation_completed = st.session_state.get('validation_completed', False)
+    if not validation_completed and bt_file is not None:
+        st.info("💡 Please validate customer names first before uploading billing terms.")
+    
+    # Show validation reminder if completed
+    if validation_completed and st.session_state.get('validation_results'):
+        results = st.session_state['validation_results']
+        if results['unfound_count'] > 0:
+            st.warning(f"⚠️ Reminder: {results['unfound_count']} customer(s) were not found and will be skipped.")
+        else:
+            st.success(f"✓ Validation passed - ready to create {results['found_count']} obligation(s)")
+    
+    # Disable button if validation not completed
+    upload_button_disabled = not validation_completed
+    
+    if st.button("📤 Upload Billing Terms", type="primary", key="upload_bt_button", disabled=upload_button_disabled):
         # Access file from session state (managed by file_uploader widget)
         uploaded_file = st.session_state.get('flat_bt_file')
         if uploaded_file is None:

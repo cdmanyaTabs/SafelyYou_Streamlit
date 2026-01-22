@@ -3,6 +3,16 @@ import streamlit as st
 import requests
 import io
 import json
+import logging
+from datetime import datetime, timedelta
+
+# Configure logging for debug output
+logging.basicConfig(
+    filename='/Users/chiragdas/Documents/GitHub/SafelyYou_Streamlit/debug_output.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(message)s',
+    filemode='w'  # Overwrite log file each run
+)
 
 def get_customer_custom_field():
     url = f"https://integrators.prod.api.tabsplatform.com/v3/customers/custom-fields"
@@ -13,12 +23,32 @@ def get_customer_custom_field():
     return response.json()
 
 def get_all_obligations():
-    url = f"https://integrators.prod.api.tabsplatform.com/v3/obligations?limit=10000"
+    # Calculate last day of previous month
+    today = datetime.now()
+    first_day_current = datetime(today.year, today.month, 1)
+    last_day_previous = first_day_current - timedelta(days=1)
+    date_filter_string = last_day_previous.strftime('%Y-%m-%d')
+    url = f"https://integrators.prod.api.tabsplatform.com/v3/obligations?limit=10000&filter=serviceEndDate:gte:{date_filter_string},endDate:gte:{date_filter_string}"
     headers = {
         "Authorization": f"{st.session_state['tabs_api_key']}"
     }
     response = requests.get(url, headers=headers)
-    return response.json()
+    result = response.json()
+    
+    # DEBUG: Log filter and count
+    logging.info("\n[DEBUG_API] get_all_obligations() called")
+    logging.info(f"[DEBUG_API] Date filter: serviceEndDate >= {date_filter_string}, endDate >= {date_filter_string}")
+    obligations = result.get("payload", {}).get("data", [])
+    logging.info(f"[DEBUG_API] Total obligations fetched: {len(obligations)}")
+    
+    # DEBUG: Check for specific customer's obligations
+    target_customer_id = "4a5a2962-bcf8-4a8b-a434-e1868072b0bd"
+    logging.info(f"[DEBUG_API] Searching for target customer: {target_customer_id}")
+    
+    # Also keep print for immediate feedback
+    print(f"[DEBUG_API] Fetched {len(obligations)} obligations")
+    
+    return result
 # Example response:
 # {
 #   "payload": {
@@ -310,6 +340,29 @@ def get_all_customers():
                 data = payload.get("data",[])
                 return data
     return []
+
+def get_excluded_customer_ids():
+    """
+    Get set of customer IDs to exclude based on parentCustomerId.
+    Excludes customers where parentCustomerId matches specific IDs.
+    
+    Returns:
+        set: Set of customer IDs to exclude from processing
+    """
+    EXCLUDED_PARENT_IDS = {
+        "6f5c57f9-3dd5-4669-8de9-cfd4a7459021",
+        "6d94324f-91a9-424b-9649-913aa765aa7c"
+    }
+    
+    customers = get_all_customers()
+    
+    excluded_ids = set()
+    for customer in customers:
+        parent_id = customer.get("parentCustomerId")
+        if parent_id in EXCLUDED_PARENT_IDS:
+            excluded_ids.add(customer.get("id"))
+    
+    return excluded_ids
 
     # Example response:
     #  "payload": {
@@ -677,6 +730,125 @@ def create_contract(customer_id, contract_name):
 #             print(f"  Error details: {response.text if hasattr(response, 'text') else 'No error details available'}")
 #     
 #     return response
+
+def validate_bt_customers(csv_file_data):
+    """
+    Validate customer names in billing terms CSV without creating any obligations.
+    This allows users to see which customers cannot be found before pushing BT.
+    
+    Args:
+        csv_file_data: Tuple (filename, file_data, content_type) or file-like object for CSV upload
+        
+    Returns:
+        dict: Validation results with structure:
+            {
+                'success': bool,
+                'total_rows': int,
+                'found_customers': [{'row': int, 'customer_name': str, 'customer_id': str}, ...],
+                'unfound_customers': [{'row': int, 'customer_name': str}, ...],
+                'found_count': int,
+                'unfound_count': int,
+                'errors': [str, ...]  # Parse errors or other issues
+            }
+    """
+    # Parse CSV data to DataFrame
+    try:
+        if isinstance(csv_file_data, tuple):
+            # Extract file data from tuple (filename, file_data, content_type)
+            csv_string = csv_file_data[1]
+            if isinstance(csv_string, bytes):
+                csv_string = csv_string.decode('utf-8')
+        else:
+            # If it's a file-like object, read it
+            csv_string = csv_file_data.read()
+            if isinstance(csv_string, bytes):
+                csv_string = csv_string.decode('utf-8')
+        
+        # Convert CSV string to DataFrame (tab-delimited)
+        # Try tab-delimited first, fall back to comma if that results in only 1 column
+        csv_buffer = io.StringIO(csv_string)
+        df = pd.read_csv(csv_buffer, delimiter='\t')
+        
+        # Check if parsing worked (if only 1 column, probably wrong delimiter)
+        if len(df.columns) == 1:
+            print(f"⚠ validate_bt_customers: Tab delimiter resulted in 1 column, trying comma delimiter")
+            csv_buffer = io.StringIO(csv_string)
+            df = pd.read_csv(csv_buffer, delimiter=',')
+        
+        print(f"✓ validate_bt_customers: Parsed CSV with {len(df)} rows")
+        print(f"  Columns found: {list(df.columns)}")
+        
+    except Exception as e:
+        print(f"✗ validate_bt_customers: Failed to parse CSV data: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return {
+            'success': False,
+            'total_rows': 0,
+            'found_customers': [],
+            'unfound_customers': [],
+            'found_count': 0,
+            'unfound_count': 0,
+            'errors': [f"Failed to parse CSV: {str(e)}"]
+        }
+    
+    # Initialize result tracking
+    found_customers = []
+    unfound_customers = []
+    errors = []
+    
+    # Process each row to validate customer names
+    for idx, row in df.iterrows():
+        try:
+            # Extract customer name
+            customer_name = row.get('customer name', '')
+            if not customer_name or pd.isna(customer_name):
+                error_msg = f"Row {idx + 1}: Missing customer name"
+                print(f"✗ validate_bt_customers: {error_msg}")
+                unfound_customers.append({
+                    'row': idx + 1,
+                    'customer_name': '(missing)'
+                })
+                continue
+            
+            # Lookup customer ID
+            customer_id = lookup_customer_id_by_name(customer_name)
+            if customer_id:
+                print(f"✓ validate_bt_customers: Row {idx + 1}: Found customer '{customer_name}' (ID: {customer_id})")
+                found_customers.append({
+                    'row': idx + 1,
+                    'customer_name': customer_name,
+                    'customer_id': customer_id
+                })
+            else:
+                print(f"✗ validate_bt_customers: Row {idx + 1}: Customer '{customer_name}' not found")
+                unfound_customers.append({
+                    'row': idx + 1,
+                    'customer_name': customer_name
+                })
+                
+        except Exception as e:
+            error_msg = f"Row {idx + 1}: {str(e)}"
+            print(f"✗ validate_bt_customers: Error processing row {idx + 1}: {str(e)}")
+            errors.append(error_msg)
+    
+    # Build result summary
+    found_count = len(found_customers)
+    unfound_count = len(unfound_customers)
+    total_rows = len(df)
+    
+    print(f"✓ validate_bt_customers: Validation complete - {found_count} found, {unfound_count} not found out of {total_rows} rows")
+    
+    return {
+        'success': True,
+        'total_rows': total_rows,
+        'found_customers': found_customers,
+        'unfound_customers': unfound_customers,
+        'found_count': found_count,
+        'unfound_count': unfound_count,
+        'errors': errors
+    }
+
 
 def push_bt(csv_file_data, merchant_name='safelyyou'):
     """
