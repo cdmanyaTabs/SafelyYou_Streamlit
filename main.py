@@ -250,7 +250,6 @@ def page_usage_transformation():
                         st.success(f"✓ Loaded {len(dataframes)} files successfully")
                     
                     # Step 2: Process data
-                    st.info("📝 Debug output is being written to: `/Users/chiragdas/Documents/GitHub/SafelyYou_Streamlit/debug_output.log`")
                     with st.spinner("Step 2/3: Processing data transformation..."):
                         output_df, unmapped_customers = process_data(dataframes)
                         if output_df is not None and not output_df.empty:

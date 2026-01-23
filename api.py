@@ -6,12 +6,13 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-# Configure logging for debug output
+# Configure logging for debug output (console only)
 logging.basicConfig(
-    filename='/Users/chiragdas/Documents/GitHub/SafelyYou_Streamlit/debug_output.log',
     level=logging.INFO,
     format='%(asctime)s - %(message)s',
-    filemode='w'  # Overwrite log file each run
+    handlers=[
+        logging.StreamHandler()  # Log to console
+    ]
 )
 
 def get_customer_custom_field():

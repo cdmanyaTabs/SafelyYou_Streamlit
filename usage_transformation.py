@@ -10,14 +10,12 @@ import sys
 # LOGGING SETUP
 # ============================================================================
 
-# Configure logging to write to file (shared with api.py)
-log_file = '/Users/chiragdas/Documents/GitHub/SafelyYou_Streamlit/debug_output.log'
+# Configure logging to console (shared with api.py)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(message)s',
     handlers=[
-        logging.FileHandler(log_file, mode='a'),  # 'a' to append to existing file
-        logging.StreamHandler(sys.stdout)  # Also output to console
+        logging.StreamHandler(sys.stdout)  # Log to console only
     ]
 )
 
@@ -596,7 +594,7 @@ def generate_usage_bt_report_from_api():
                     logging.info(f"[DEBUG_GENERATE] Billing Schedule End Date: {billing_schedule.get('endDate')}")
                     logging.info(f"[DEBUG_GENERATE] Event Type ID: {billing_schedule.get('eventTypeId')}")
                     logging.info(f"[DEBUG_GENERATE] Billing Type: {billing_type}")
-                    print("[DEBUG] TARGET CUSTOMER FOUND IN OBLIGATIONS - Check debug_output.log")
+                    print("[DEBUG] TARGET CUSTOMER FOUND IN OBLIGATIONS")
                 
                 # Extract Product name from billingSchedule (already extracted above)
                 product_name = billing_schedule.get("name", "")
@@ -612,7 +610,7 @@ def generate_usage_bt_report_from_api():
                     logging.info(f"[DEBUG_GENERATE] Event Type Name: '{event_type_name}'")
                     if not event_type_name:
                         logging.info(f"[DEBUG_GENERATE] ⚠️⚠️⚠️ EVENT TYPE NAME IS BLANK - WILL BE FILTERED OUT ⚠️⚠️⚠️")
-                        print("[DEBUG] TARGET CUSTOMER HAS BLANK EVENT TYPE - Check debug_output.log")
+                        print("[DEBUG] TARGET CUSTOMER HAS BLANK EVENT TYPE")
                 
                 # Debug: Check target customer event type
                 if str(customer_id) == TARGET_DEBUG_CUSTOMER:
@@ -775,7 +773,7 @@ def process_data(dataframes):
                 logging.info(f"\n{'=' * 80}")
                 logging.info(f"[DEBUG_PROCESS] ✓✓✓ TARGET CUSTOMER IN PROCESSING LOOP ✓✓✓")
                 logging.info(f"{'=' * 80}")
-                print("[DEBUG] TARGET CUSTOMER IN PROCESSING LOOP - Check debug_output.log")
+                print("[DEBUG] TARGET CUSTOMER IN PROCESSING LOOP")
             
             if is_debug_target:
                 logging.info(f"\n{'=' * 80}")
@@ -852,7 +850,7 @@ def process_data(dataframes):
                 else:
                     logging.info(f"[DEBUG_TARGET] ✗✗✗ FILTERED OUT: Customer not found in Customer Mapping")
                     print(f"[DEBUG] Target customer NOT in customer mapping")
-                print("[DEBUG] Checking mapping for target customer - Check debug_output.log")
+                print("[DEBUG] Checking mapping for target customer")
             
             if mapping_rows.empty:
                 print(f"          ✗ No mapping found for customer ID: {customer_id}")
