@@ -908,8 +908,8 @@ def process_data(dataframes):
                     customer_id=customer_id
                 )
             
-            elif report_type == 'By Bus Unit':
-                print(f"          → Processing: 'By Bus Unit' logic")
+            elif report_type == 'By Bus Unit' or report_type == 'By Business Unit':
+                print(f"          → Processing: 'By Business Unit' logic")
                 fetched_value = process_by_business_unit(
                     internal_community_id, 
                     product_name, 
