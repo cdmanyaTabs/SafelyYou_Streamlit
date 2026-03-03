@@ -999,12 +999,19 @@ def push_bt(csv_file_data, merchant_name='safelyyou'):
             # Handle NaN values - convert to appropriate defaults to avoid JSON serialization errors
             if pd.isna(name):
                 name = ''
-            if pd.isna(net_payment_terms):
-                net_payment_terms = ''
             if pd.isna(billing_strategy):
                 billing_strategy = 'LAST_OF_PERIOD'
             if pd.isna(billing_interval):
                 billing_interval = 'MONTH'
+            
+            # Convert net_payment_terms to int or None
+            try:
+                if pd.notna(net_payment_terms) and str(net_payment_terms).strip():
+                    net_payment_terms = int(float(net_payment_terms))
+                else:
+                    net_payment_terms = None
+            except (ValueError, TypeError):
+                net_payment_terms = None
             
             # Convert quantity to int
             try:
@@ -1048,24 +1055,39 @@ def push_bt(csv_file_data, merchant_name='safelyyou'):
             else:
                 interval = 'MONTH'  # Default
             
-            # Handle date formatting - ensure YYYY-MM-DD format
+            # Handle date formatting - convert to YYYY-MM-DD format
             def format_date(date_value):
                 if pd.isna(date_value) or date_value == '':
                     return None
                 date_str = str(date_value).strip()
-                # If it's already in YYYY-MM-DD format, return as is
-                if len(date_str) == 10 and date_str.count('-') == 2:
-                    return date_str
-                # Try to parse and reformat
+                
+                # Try to parse and reformat to YYYY-MM-DD
                 try:
                     from datetime import datetime
-                    # Try common date formats
-                    for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d']:
+                    # Try common date formats - include 2-digit year formats
+                    parsed_date = None
+                    # Order matters: try most specific first
+                    for fmt in [
+                        '%Y-%m-%d',      # 2027-01-01
+                        '%m/%d/%Y',      # 01/01/2027 or 1/1/2027 (Python handles both)
+                        '%m/%d/%y',      # 01/01/27 or 1/1/27 (2-digit year)
+                        '%d/%m/%Y',      # 01/01/2027 (day first)
+                        '%d/%m/%y',      # 01/01/27 (day first, 2-digit year)
+                        '%Y/%m/%d'       # 2027/01/01
+                    ]:
                         try:
-                            dt = datetime.strptime(date_str, fmt)
-                            return dt.strftime('%Y-%m-%d')
+                            parsed_date = datetime.strptime(date_str, fmt)
+                            break
                         except ValueError:
                             continue
+                    
+                    if parsed_date:
+                        return parsed_date.strftime('%Y-%m-%d')
+                    
+                    # If already in YYYY-MM-DD format, return as-is
+                    if len(date_str) == 10 and date_str.count('-') == 2:
+                        return date_str
+                    
                     return date_str  # Return as-is if parsing fails
                 except:
                     return date_str
@@ -1074,27 +1096,28 @@ def push_bt(csv_file_data, merchant_name='safelyyou'):
             service_end_date = format_date(service_end_date)
             invoice_date = format_date(invoice_date)
             
-            # Build payload
+            # If invoice_date is None, use service_start_date as fallback
+            # startDate is required by the API
+            if invoice_date is None:
+                invoice_date = service_start_date
+            
+            # Build payload - only include dates that are not None
             payload = {
-                "serviceStartDate": service_start_date,
-                "serviceEndDate": service_end_date,
                 "billingSchedule": {
                     "name": name,
                     "description": note,
-                    "startDate": invoice_date,
                     "duration": duration,
                     "invoiceDateStrategy": invoice_date_strategy,
                     "isRecurring": is_recurring,
                     "interval": interval,
                     "intervalFrequency": interval_frequency,
-                    "netPaymentTerms": net_payment_terms,
                     "quantity": quantity,
                     "billingType": "FLAT",
                     "pricingType": "SIMPLE",
                     "invoiceType": "INVOICE",
                     "pricing": [
                         {
-                            "tier": 1,
+                            "tier": 0,
                             "amount": total_price,
                             "amountType": "TOTAL_INVOICE",  # For FLAT billing type
                             "tierMinimum": 0
@@ -1102,6 +1125,32 @@ def push_bt(csv_file_data, merchant_name='safelyyou'):
                     ]
                 }
             }
+            
+            # Add service dates only if they are not None
+            if service_start_date is not None:
+                payload["serviceStartDate"] = service_start_date
+            if service_end_date is not None:
+                payload["serviceEndDate"] = service_end_date
+            
+            # Add invoice start date (required field)
+            if invoice_date is not None:
+                payload["billingSchedule"]["startDate"] = invoice_date
+            
+            # Add endDate to billingSchedule if service_end_date exists
+            if service_end_date is not None:
+                payload["billingSchedule"]["endDate"] = service_end_date
+            
+            # Add netPaymentTerms only if not None
+            if net_payment_terms is not None:
+                payload["billingSchedule"]["netPaymentTerms"] = net_payment_terms
+            
+            # Validate critical required fields before sending
+            if not payload["billingSchedule"].get("startDate"):
+                error_msg = f"Row {idx + 1}: Missing required startDate (invoice date and revenue start date are both empty)"
+                print(f"✗ push_bt: {error_msg}")
+                errors.append(error_msg)
+                failed_count += 1
+                continue
             
             # Add eventTypeId if available (optional, can be empty)
             if event_type_id and pd.notna(event_type_id) and str(event_type_id).strip():
@@ -1142,15 +1191,23 @@ def push_bt(csv_file_data, merchant_name='safelyyou'):
                 try:
                     error_data = response.json()
                     # Try multiple possible error fields
-                    error_msg = (
+                    error_msg_detail = (
                         error_data.get('message') or 
                         error_data.get('error') or 
                         str(error_data.get('errors', '')) or
                         str(error_data.get('payload', {}).get('message', '')) or
                         str(error_data)
                     )
-                    # Print full error response for debugging
+                    error_msg = f"Row {idx + 1}: {error_msg_detail}"
+                    # Print full error response AND the payload sent for debugging
                     print(f"  Debug - Full error response: {error_data}")
+                    print(f"  Debug - Payload that was sent:")
+                    print(f"    serviceStartDate: {payload.get('serviceStartDate')}")
+                    print(f"    serviceEndDate: {payload.get('serviceEndDate')}")
+                    print(f"    billingSchedule.startDate: {payload.get('billingSchedule', {}).get('startDate')}")
+                    print(f"    billingSchedule.name: {payload.get('billingSchedule', {}).get('name')}")
+                    print(f"    billingSchedule.quantity: {payload.get('billingSchedule', {}).get('quantity')}")
+                    print(f"    billingSchedule.pricing[0].amount: {payload.get('billingSchedule', {}).get('pricing', [{}])[0].get('amount')}")
                 except:
                     error_msg = response.text[:500] if hasattr(response, 'text') else error_msg
                     print(f"  Debug - Error response text: {error_msg}")
