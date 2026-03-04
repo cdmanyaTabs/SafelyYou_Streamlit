@@ -851,7 +851,7 @@ def validate_bt_customers(csv_file_data):
     }
 
 
-def push_bt(csv_file_data, merchant_name='safelyyou'):
+def push_bt(csv_file_data, merchant_name='safelyyou', progress_callback=None):
     """
     Push billing terms to Tabs API using the new v3/contracts/{id}/obligations endpoint.
     Parses CSV data and creates individual obligations for each row.
@@ -859,6 +859,7 @@ def push_bt(csv_file_data, merchant_name='safelyyou'):
     Args:
         csv_file_data: Tuple (filename, file_data, content_type) or file-like object for CSV upload
         merchant_name: Merchant name (kept for backward compatibility, not used in new API)
+        progress_callback: Optional callback function(current, total, customer_name, status, error_msg)
         
     Returns:
         Response-like object compatible with old implementation
@@ -935,11 +936,18 @@ def push_bt(csv_file_data, merchant_name='safelyyou'):
         try:
             # Extract customer name and lookup customer_id
             customer_name = row.get('customer name', '')
+            
+            # Notify progress - processing started
+            if progress_callback:
+                progress_callback(idx + 1, total_rows, customer_name, "processing")
+            
             if not customer_name or pd.isna(customer_name):
                 error_msg = f"Row {idx + 1}: Missing customer name"
                 print(f"✗ push_bt: {error_msg}")
                 errors.append(error_msg)
                 failed_count += 1
+                if progress_callback:
+                    progress_callback(idx + 1, total_rows, "Unknown", "failed", error_msg)
                 continue
             
             customer_id = lookup_customer_id_by_name(customer_name)
@@ -948,6 +956,8 @@ def push_bt(csv_file_data, merchant_name='safelyyou'):
                 print(f"✗ push_bt: {error_msg}")
                 errors.append(error_msg)
                 failed_count += 1
+                if progress_callback:
+                    progress_callback(idx + 1, total_rows, customer_name, "failed", error_msg)
                 continue
             
             # Extract contract name and lookup/create contract_id
@@ -965,6 +975,8 @@ def push_bt(csv_file_data, merchant_name='safelyyou'):
                 print(f"✗ push_bt: {error_msg}")
                 errors.append(error_msg)
                 failed_count += 1
+                if progress_callback:
+                    progress_callback(idx + 1, total_rows, customer_name, "failed", error_msg)
                 continue
             
             # Build URL
@@ -1150,6 +1162,8 @@ def push_bt(csv_file_data, merchant_name='safelyyou'):
                 print(f"✗ push_bt: {error_msg}")
                 errors.append(error_msg)
                 failed_count += 1
+                if progress_callback:
+                    progress_callback(idx + 1, total_rows, customer_name, "failed", error_msg)
                 continue
             
             # Add eventTypeId if available (optional, can be empty)
@@ -1180,50 +1194,102 @@ def push_bt(csv_file_data, merchant_name='safelyyou'):
                         obligation_ids.append(obligation_id)
                         successful_count += 1
                         print(f"✓ push_bt: Created obligation {obligation_id} for contract {contract_id} (row {idx + 1})")
+                        if progress_callback:
+                            progress_callback(idx + 1, total_rows, customer_name, "success")
                     else:
                         print(f"⚠ push_bt: API call succeeded for row {idx + 1} but no obligation ID in response")
                         successful_count += 1
+                        if progress_callback:
+                            progress_callback(idx + 1, total_rows, customer_name, "success")
                 except Exception as e:
                     print(f"⚠ push_bt: API call succeeded for row {idx + 1} but failed to parse response: {str(e)}")
                     successful_count += 1
+                    if progress_callback:
+                        progress_callback(idx + 1, total_rows, customer_name, "success")
             else:
-                error_msg = f"Row {idx + 1}: HTTP {response.status_code}"
+                # Extract detailed error information from API response
+                error_msg = f"HTTP {response.status_code}"
                 try:
                     error_data = response.json()
-                    # Try multiple possible error fields
-                    error_msg_detail = (
-                        error_data.get('message') or 
-                        error_data.get('error') or 
-                        str(error_data.get('errors', '')) or
-                        str(error_data.get('payload', {}).get('message', '')) or
-                        str(error_data)
-                    )
-                    error_msg = f"Row {idx + 1}: {error_msg_detail}"
-                    # Print full error response AND the payload sent for debugging
+                    
+                    # Build detailed error message with API response details
+                    error_parts = []
+                    
+                    # Get main error message
+                    if 'message' in error_data:
+                        error_parts.append(error_data['message'])
+                    
+                    # Check for nested error object with details
+                    if 'error' in error_data and isinstance(error_data['error'], dict):
+                        error_obj = error_data['error']
+                        
+                        # Add error code if present
+                        if 'code' in error_obj:
+                            error_parts.append(f"Error Code: {error_obj['code']}")
+                        
+                        # Add error message if present and different from main message
+                        if 'message' in error_obj and error_obj['message'] not in error_parts:
+                            error_parts.append(error_obj['message'])
+                        
+                        # Add validation details if present
+                        if 'details' in error_obj and isinstance(error_obj['details'], dict):
+                            details = error_obj['details']
+                            detail_messages = []
+                            for field, messages in details.items():
+                                if isinstance(messages, list):
+                                    for msg in messages:
+                                        detail_messages.append(f"• {field}: {msg}")
+                                else:
+                                    detail_messages.append(f"• {field}: {messages}")
+                            
+                            if detail_messages:
+                                error_parts.append("\n  " + "\n  ".join(detail_messages))
+                    
+                    # Fallback to other error fields if nothing extracted yet
+                    if not error_parts:
+                        if 'error' in error_data and isinstance(error_data['error'], str):
+                            error_parts.append(error_data['error'])
+                        elif 'errors' in error_data:
+                            error_parts.append(str(error_data['errors']))
+                        else:
+                            # Last resort - show status code
+                            error_parts.append(f"Status {response.status_code}")
+                    
+                    # Combine all error parts with clear separation
+                    if error_parts:
+                        error_msg = " | ".join(error_parts)
+                    
+                    # Print full error response for debugging
                     print(f"  Debug - Full error response: {error_data}")
-                    print(f"  Debug - Payload that was sent:")
-                    print(f"    serviceStartDate: {payload.get('serviceStartDate')}")
-                    print(f"    serviceEndDate: {payload.get('serviceEndDate')}")
-                    print(f"    billingSchedule.startDate: {payload.get('billingSchedule', {}).get('startDate')}")
-                    print(f"    billingSchedule.name: {payload.get('billingSchedule', {}).get('name')}")
-                    print(f"    billingSchedule.quantity: {payload.get('billingSchedule', {}).get('quantity')}")
-                    print(f"    billingSchedule.pricing[0].amount: {payload.get('billingSchedule', {}).get('pricing', [{}])[0].get('amount')}")
-                except:
-                    error_msg = response.text[:500] if hasattr(response, 'text') else error_msg
-                    print(f"  Debug - Error response text: {error_msg}")
+                except Exception as e:
+                    # If JSON parsing fails, use raw response text
+                    try:
+                        error_msg = f"HTTP {response.status_code} - {response.text[:200]}"
+                    except:
+                        error_msg = f"HTTP {response.status_code} - Unable to parse error response"
+                    print(f"  Debug - Error parsing response: {str(e)}")
                 
-                # Also print the payload that was sent for debugging (without sensitive data)
-                print(f"  Debug - Payload sent: contract_id={contract_id}, name={name}, total_price={total_price}, event_type_id={event_type_id}, service_start_date={service_start_date}, service_end_date={service_end_date}")
+                # Format final error message for user
+                full_error_msg = f"{customer_name}: {error_msg}"
                 
                 print(f"✗ push_bt: Failed to create obligation for contract {contract_id} (row {idx + 1}): {error_msg}")
-                errors.append(f"Row {idx + 1}: {error_msg}")
+                errors.append(full_error_msg)
                 failed_count += 1
+                if progress_callback:
+                    progress_callback(idx + 1, total_rows, customer_name, "failed", error_msg)
                 
         except Exception as e:
             error_msg = f"Row {idx + 1}: {str(e)}"
             print(f"✗ push_bt: Error processing row {idx + 1}: {str(e)}")
             errors.append(error_msg)
             failed_count += 1
+            # Try to get customer name for callback
+            try:
+                customer_name = row.get('customer name', 'Unknown')
+            except:
+                customer_name = 'Unknown'
+            if progress_callback:
+                progress_callback(idx + 1, total_rows, customer_name, "failed", error_msg)
     
     # Print summary
     print(f"✓ push_bt: Processed {total_rows} row(s) - {successful_count} successful, {failed_count} failed")
@@ -1232,18 +1298,22 @@ def push_bt(csv_file_data, merchant_name='safelyyou'):
     
     # Create a mock response object compatible with old implementation
     class MockResponse:
-        def __init__(self, status_code, obligation_ids, errors):
+        def __init__(self, status_code, obligation_ids, errors, successful_count, failed_count):
             self.status_code = status_code
             self._obligation_ids = obligation_ids
             self._errors = errors
+            self._successful_count = successful_count
+            self._failed_count = failed_count
         
         def json(self):
             # Return structure compatible with old implementation
             return {
                 "billingTermIds": self._obligation_ids,
-                "errors": self._errors if self._errors else None
+                "errors": self._errors if self._errors else None,
+                "successful_count": self._successful_count,
+                "failed_count": self._failed_count
             }
     
     # Return success if at least some obligations were created
     status_code = 201 if successful_count > 0 else 400
-    return MockResponse(status_code, obligation_ids, errors)
+    return MockResponse(status_code, obligation_ids, errors, successful_count, failed_count)

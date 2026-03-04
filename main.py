@@ -482,58 +482,99 @@ def page_flat_bt_upload():
                 # Reset file pointer
                 uploaded_file.seek(0)
                 
-                with st.spinner("Uploading billing terms to Tabs API..."):
-                    # Call push_bt function
-                    result = push_bt(uploaded_file, merchant_name='safelyyou')
+                # Create containers for progress display
+                progress_container = st.container()
+                status_container = st.container()
+                
+                with progress_container:
+                    st.write("### Upload Progress")
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                
+                # Define callback for progress updates
+                def progress_callback(current, total, customer_name, status, error_msg=None):
+                    """Callback to update progress in real-time"""
+                    progress = current / total if total > 0 else 0
+                    progress_bar.progress(progress)
                     
-                    # Display results
+                    if status == "success":
+                        status_text.text(f"✅ {current}/{total}: {customer_name} - Success")
+                    elif status == "failed":
+                        status_text.text(f"❌ {current}/{total}: {customer_name} - Failed")
+                    elif status == "processing":
+                        status_text.text(f"⏳ {current}/{total}: Processing {customer_name}...")
+                
+                # Call push_bt function with progress callback
+                result = push_bt(uploaded_file, merchant_name='safelyyou', progress_callback=progress_callback)
+                
+                # Clear progress display
+                progress_bar.empty()
+                status_text.empty()
+                
+                with status_container:
+                    # Display results summary
                     if hasattr(result, 'status_code'):
                         status_code = result.status_code
+                        result_data = result.json()
                         
-                        # Check for success
-                        if 200 <= status_code < 300:
-                            st.success(f"✅ Billing terms uploaded successfully!")
+                        successful_count = result_data.get('successful_count', 0)
+                        failed_count = result_data.get('failed_count', 0)
+                        total_count = successful_count + failed_count
+                        
+                        # Show summary
+                        st.write("### Upload Summary")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Total", total_count)
+                        with col2:
+                            st.metric("✅ Succeeded", successful_count)
+                        with col3:
+                            st.metric("❌ Failed", failed_count)
+                        
+                        # Show successful obligations
+                        if successful_count > 0:
+                            st.success(f"✅ Successfully uploaded {successful_count} billing term(s)")
                             
-                            # Try to get obligation IDs from response
-                            try:
-                                result_data = result.json()
-                                obligation_ids = result_data.get('billingTermIds', [])
-                                
-                                if obligation_ids:
-                                    st.info(f"Created {len(obligation_ids)} obligation(s)")
+                            obligation_ids = result_data.get('billingTermIds', [])
+                            if obligation_ids:
+                                with st.expander(f"View {len(obligation_ids)} Created Obligation IDs"):
+                                    for idx, ob_id in enumerate(obligation_ids, 1):
+                                        st.write(f"{idx}. `{ob_id}`")
+                        
+                        # Show failed obligations
+                        errors = result_data.get('errors', [])
+                        if errors:
+                            st.error(f"❌ {failed_count} billing term(s) failed to upload")
+                            with st.expander(f"View {len(errors)} Error Details", expanded=True):
+                                for idx, error in enumerate(errors, 1):
+                                    # Parse error to extract row number and details
+                                    if error.startswith("Row "):
+                                        # Split into row number and error message
+                                        parts = error.split(": ", 1)
+                                        if len(parts) == 2:
+                                            row_info = parts[0]
+                                            error_details = parts[1]
+                                            st.markdown(f"**{row_info}:**")
+                                            # Display error details with proper formatting
+                                            if "\n" in error_details:
+                                                # Multi-line error with bullet points
+                                                st.markdown(error_details)
+                                            else:
+                                                st.markdown(f"- {error_details}")
+                                        else:
+                                            st.markdown(f"**{idx}.** {error}")
+                                    else:
+                                        st.markdown(f"**{idx}.** {error}")
                                     
-                                    # Show obligation IDs
-                                    with st.expander("View Created Obligation IDs"):
-                                        for idx, ob_id in enumerate(obligation_ids, 1):
-                                            st.write(f"{idx}. {ob_id}")
-                                else:
-                                    st.info("Upload completed, but no obligation IDs returned.")
-                            except:
-                                st.info("Upload completed successfully.")
-                            
-                            # Show errors if any
-                            try:
-                                result_data = result.json()
-                                errors = result_data.get('errors', [])
-                                if errors:
-                                    with st.expander("⚠️ View Errors/Warnings"):
-                                        for error in errors:
-                                            st.warning(error)
-                            except:
-                                pass
-                        else:
-                            st.error(f"Upload failed with status code: {status_code}")
-                            
-                            # Show errors if available
-                            try:
-                                result_data = result.json()
-                                errors = result_data.get('errors', [])
-                                if errors:
-                                    with st.expander("View Errors"):
-                                        for error in errors:
-                                            st.error(error)
-                            except:
-                                pass
+                                    # Add a subtle divider between errors
+                                    if idx < len(errors):
+                                        st.markdown("---")
+                        
+                        # Overall status message
+                        if failed_count == 0 and successful_count > 0:
+                            st.balloons()
+                        elif successful_count == 0:
+                            st.error("All billing terms failed to upload. Please check the errors above.")
                     else:
                         st.warning("Upload completed, but could not parse response details.")
                         
