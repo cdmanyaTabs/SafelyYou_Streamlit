@@ -80,7 +80,6 @@ def load_uploaded_files(uploaded_files_dict):
     
     Args:
         uploaded_files_dict: Dictionary with keys matching usage_transformation.py structure:
-            - 'customer_mapping': Customer Mapping CSV
             - 'community_quantity': Community Quantity Data Report CSV
             - 'business_quantity': Business Quantity Data Report CSV
             - 'minimum_report': Minimum Report CSV
@@ -96,11 +95,6 @@ def load_uploaded_files(uploaded_files_dict):
     try:
         # Always generate Usage BT Report from API
         dataframes['usage_bt'] = generate_usage_bt_report_from_api()
-        
-        # Load Customer Mapping
-        if uploaded_files_dict.get('customer_mapping'):
-            uploaded_files_dict['customer_mapping'].seek(0)
-            dataframes['customer_mapping'] = pd.read_csv(uploaded_files_dict['customer_mapping'])
         
         # Load Community Quantity Data Report
         if uploaded_files_dict.get('community_quantity'):
@@ -145,7 +139,7 @@ def page_usage_transformation():
     
     # Main content area
     st.header("Usage Transformation Processing")
-    st.write("Upload the required CSV files to process usage transformation. All 5 files are required before processing.")
+    st.write("Upload the required CSV files to process usage transformation. All 4 files are required before processing.")
     st.write("**Note:** Tabs Usage Products are automatically generated from the Tabs API.")
     st.write("Contact your Tabs account manager via Slack if you have any questions.")
     
@@ -163,18 +157,7 @@ def page_usage_transformation():
                 st.session_state['authenticated'] = False
                 st.rerun()
         
-        st.subheader("2. Customer Mapping")
-        customer_mapping_file = st.file_uploader(
-            "Upload Customer Mapping CSV",
-            type=['csv'],
-            key="customer_mapping",
-            help="Upload the Customer Mapping CSV file"
-        )
-        if customer_mapping_file is not None:
-            st.success(f"✓ Uploaded: {customer_mapping_file.name}")
-            st.session_state['customer_mapping_file'] = customer_mapping_file
-        
-        st.subheader("3. Product Minimums Report")
+        st.subheader("2. Product Minimums Report")
         minimum_report_file = st.file_uploader(
             "Upload Minimum Report CSV",
             type=['csv'],
@@ -186,7 +169,7 @@ def page_usage_transformation():
             st.session_state['minimum_report_file'] = minimum_report_file
         
     with col2:
-        st.subheader("4. By Community Data Report")
+        st.subheader("3. By Community Data Report")
         community_quantity_file = st.file_uploader(
             "Upload Community Quantity Data Report CSV",
             type=['csv'],
@@ -197,7 +180,7 @@ def page_usage_transformation():
             st.success(f"✓ Uploaded: {community_quantity_file.name}")
             st.session_state['community_quantity_file'] = community_quantity_file
         
-        st.subheader("5. By Business Unit Data Report")
+        st.subheader("4. By Business Unit Data Report")
         business_quantity_file = st.file_uploader(
             "Upload Business Quantity Data Report CSV",
             type=['csv'],
@@ -208,7 +191,7 @@ def page_usage_transformation():
             st.success(f"✓ Uploaded: {business_quantity_file.name}")
             st.session_state['business_quantity_file'] = business_quantity_file
         
-        st.subheader("6. Combination Product Report")
+        st.subheader("5. Combination Product Report")
         combo_product_report_file = st.file_uploader(
             "Upload Combo Product Report CSV",
             type=['csv'],
@@ -224,7 +207,6 @@ def page_usage_transformation():
     if st.button("Process Files", type="primary", key="process_button"):
         # Validate all required files are uploaded
         required_files = {
-            'customer_mapping': st.session_state.get('customer_mapping_file'),
             'community_quantity': st.session_state.get('community_quantity_file'),
             'business_quantity': st.session_state.get('business_quantity_file'),
             'minimum_report': st.session_state.get('minimum_report_file'),

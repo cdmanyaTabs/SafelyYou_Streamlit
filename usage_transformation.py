@@ -56,7 +56,6 @@ def get_file_paths():
     
     file_paths = {
         'usage_bt': 'Usage_BT_Report.csv',
-        'customer_mapping': 'Customer_Mapping.csv',
         'community_quantity': 'Community_Quantity_Data_Report.csv',
         'business_quantity': 'Business_Quantity_Data_Report.csv',
         'minimum_report': 'Minimum_Report.csv',
@@ -101,27 +100,22 @@ def load_csv_files(file_paths, use_api_for_usage_bt=False):
             print(f"      ✓ Loaded successfully with shape: {dataframes['usage_bt'].shape}")
             print(f"      Columns: {list(dataframes['usage_bt'].columns)}")
         
-        print("\n[1.2] Loading Customer Mapping CSV...")
-        dataframes['customer_mapping'] = pd.read_csv(file_paths['customer_mapping'])
-        print(f"      ✓ Loaded successfully with shape: {dataframes['customer_mapping'].shape}")
-        print(f"      Columns: {list(dataframes['customer_mapping'].columns)}")
-        
-        print("\n[1.3] Loading Community Quantity Data Report CSV...")
+        print("\n[1.2] Loading Community Quantity Data Report CSV...")
         dataframes['community_quantity'] = pd.read_csv(file_paths['community_quantity'])
         print(f"      ✓ Loaded successfully with shape: {dataframes['community_quantity'].shape}")
         print(f"      Columns: {list(dataframes['community_quantity'].columns)}")
         
-        print("\n[1.4] Loading Business Quantity Data Report CSV...")
+        print("\n[1.3] Loading Business Quantity Data Report CSV...")
         dataframes['business_quantity'] = pd.read_csv(file_paths['business_quantity'])
         print(f"      ✓ Loaded successfully with shape: {dataframes['business_quantity'].shape}")
         print(f"      Columns: {list(dataframes['business_quantity'].columns)}")
         
-        print("\n[1.5] Loading Minimum Report CSV...")
+        print("\n[1.4] Loading Minimum Report CSV...")
         dataframes['minimum_report'] = pd.read_csv(file_paths['minimum_report'])
         print(f"      ✓ Loaded successfully with shape: {dataframes['minimum_report'].shape}")
         print(f"      Columns: {list(dataframes['minimum_report'].columns)}")
         
-        print("\n[1.6] Loading Combo Product Report CSV...")
+        print("\n[1.5] Loading Combo Product Report CSV...")
         # Try tab-delimited first
         dataframes['combo_product_report'] = pd.read_csv(file_paths['combo_product_report'], delimiter='\t')
         # If only 1 column detected, it's probably comma-delimited
@@ -682,7 +676,6 @@ def process_data(dataframes):
     print("=" * 80)
     
     usage_bt = dataframes['usage_bt']
-    customer_mapping = dataframes['customer_mapping']
     community_quantity = dataframes['community_quantity']
     business_quantity = dataframes['business_quantity']
     minimum_report = dataframes['minimum_report']
@@ -798,88 +791,18 @@ def process_data(dataframes):
                     print(f"[DEBUG] Target customer filtered: blank event type")
                 continue
             
-            # STEP 2.2: Find mapping in Customer Mapping CSV
-            print(f"\n  [2.1.2] Looking up Customer Mapping...")
+            # STEP 2.2: Get report type from Tabs API custom field
+            print(f"\n  [2.1.2] Fetching report type from API...")
             
-            # Find customer mapping columns case-insensitively
-            tabs_customer_id_col = find_column_case_insensitive(customer_mapping, 'Tabs customer ID')
-            internal_community_id_col = find_column_case_insensitive(customer_mapping, 'Internal Community ID')
-            report_col = find_column_case_insensitive(customer_mapping, 'Report')
+            from api import get_customer_report_type
+            report_type = get_customer_report_type(customer_id)
             
-            if not tabs_customer_id_col:
-                print(f"          ✗ ERROR: Could not find 'Tabs customer ID' column in Customer Mapping!")
-                print(f"          Available columns: {list(customer_mapping.columns)}")
-                print(f"          → Skipping this row")
-                continue
-            
-            if not internal_community_id_col:
-                print(f"          ✗ ERROR: Could not find 'Internal Community ID' column in Customer Mapping!")
-                print(f"          Available columns: {list(customer_mapping.columns)}")
-                print(f"          → Skipping this row")
-                continue
-            
-            if not report_col:
-                print(f"          ✗ ERROR: Could not find 'Report' column in Customer Mapping!")
-                print(f"          Available columns: {list(customer_mapping.columns)}")
-                print(f"          → Skipping this row")
-                continue
-            
-            print(f"          [COLUMN_MAPPING] Using Customer Mapping columns:")
-            print(f"            - Tabs customer ID: '{tabs_customer_id_col}'")
-            print(f"            - Internal Community ID: '{internal_community_id_col}'")
-            print(f"            - Report: '{report_col}'")
-            
-            mapping_rows = customer_mapping[customer_mapping[tabs_customer_id_col] == customer_id]
-            
-            # DEBUG: Target customer mapping check
-            if str(customer_id) == "4a5a2962-bcf8-4a8b-a434-e1868072b0bd":
-                logging.info(f"\n[DEBUG_MAPPING] Checking Customer Mapping for target customer")
-                logging.info(f"[DEBUG_MAPPING] Looking for Tabs Customer ID: {customer_id}")
-                logging.info(f"[DEBUG_MAPPING] Mapping rows found: {len(mapping_rows)}")
-                if not mapping_rows.empty:
-                    logging.info(f"[DEBUG_MAPPING] Internal Community ID: {mapping_rows.iloc[0][internal_community_id_col]}")
-                    logging.info(f"[DEBUG_MAPPING] Report Type: {mapping_rows.iloc[0][report_col]}")
-            
-            if is_debug_target:
-                logging.info(f"\n[DEBUG_TARGET] Checking Customer Mapping")
-                logging.info(f"[DEBUG_TARGET] Looking for Tabs Customer ID: {customer_id}")
-                logging.info(f"[DEBUG_TARGET] Mapping rows found: {len(mapping_rows)}")
-                if not mapping_rows.empty:
-                    logging.info(f"[DEBUG_TARGET] Internal Community ID: {mapping_rows.iloc[0][internal_community_id_col]}")
-                    logging.info(f"[DEBUG_TARGET] Report Type: {mapping_rows.iloc[0][report_col]}")
-                else:
-                    logging.info(f"[DEBUG_TARGET] ✗✗✗ FILTERED OUT: Customer not found in Customer Mapping")
-                    print(f"[DEBUG] Target customer NOT in customer mapping")
-                print("[DEBUG] Checking mapping for target customer")
-            
-            if mapping_rows.empty:
-                print(f"          ✗ No mapping found for customer ID: {customer_id}")
+            if not report_type:
+                print(f"          ⚠ No 'Active Bed Report' custom field found for customer {customer_id}")
                 print(f"          → Will try direct lookup in all reports by Tabs Platform ID")
-                # DEBUG: Check if this is the target customer ID
-                if str(customer_id) == '4a5a2962-bcf8-4a8b-a434-e1868072b0bd':
-                    logging.info(f"          [DEBUG] ⚠ TARGET CUSTOMER not in mapping, trying direct lookup...")
-                    print(f"          [DEBUG] ⚠ TARGET CUSTOMER not in mapping, trying direct lookup...")
-                if str(customer_id) == '8f64bfad-fe84-4839-9a9f-037403bdc93a':
-                    print(f"          [DEBUG] ⚠ TARGET CUSTOMER ID not in mapping, trying direct lookup...")
-                if is_debug_target:
-                    logging.info(f"[DEBUG_TARGET] Not in Customer Mapping, trying direct lookup")
-                    print(f"[DEBUG] Target customer not in mapping, trying direct lookup")
-                # Set defaults for direct lookup attempt
-                internal_community_id = None
                 report_type = 'Direct Lookup'
             else:
-                # Handle multiple mapping rows
-                if len(mapping_rows) > 1:
-                    print(f"          ⚠ Found {len(mapping_rows)} mapping entries for customer ID {customer_id}")
-                    print(f"          → Using first entry")
-                
-                mapping_row = mapping_rows.iloc[0]
-                internal_community_id = mapping_row[internal_community_id_col]
-                report_type = mapping_row[report_col]
-                
-                print(f"          ✓ Mapping found:")
-                print(f"            - Internal Community ID: {internal_community_id}")
-                print(f"            - Report Type: {report_type}")
+                print(f"          ✓ Report type from API: '{report_type}'")
             
             # STEP 2.3: Determine report type and fetch value
             print(f"\n  [2.1.3] Determining report type and fetching values...")
@@ -888,10 +811,10 @@ def process_data(dataframes):
             fetched_value = None
             
             if report_type == 'Direct Lookup':
-                # Not in customer mapping - only try By Community report with Tabs Platform ID
-                print(f"          → Not in Customer Mapping, checking By Community report with Tabs Platform ID...")
+                # No custom field found - try all reports with Tabs Platform ID
+                print(f"          → No custom field, checking all reports with Tabs Platform ID...")
                 fetched_value = process_by_community(
-                    None,  # No internal_community_id available
+                    None,  # No internal_community_id needed
                     product_name, 
                     community_quantity,
                     idx,
@@ -901,7 +824,7 @@ def process_data(dataframes):
             elif report_type == 'By Community':
                 print(f"          → Processing: 'By Community' logic")
                 fetched_value = process_by_community(
-                    internal_community_id, 
+                    None,  # No internal_community_id needed - using Tabs Platform ID
                     product_name, 
                     community_quantity,
                     idx,
@@ -911,7 +834,7 @@ def process_data(dataframes):
             elif report_type == 'By Bus Unit' or report_type == 'By Business Unit':
                 print(f"          → Processing: 'By Business Unit' logic")
                 fetched_value = process_by_business_unit(
-                    internal_community_id, 
+                    None,  # No internal_community_id needed - using Tabs Platform ID
                     product_name, 
                     business_quantity,
                     idx,
@@ -921,7 +844,7 @@ def process_data(dataframes):
             elif report_type == 'Combination Product':
                 print(f"          → Processing: 'Combination Product' logic")
                 fetched_value = process_combo_product(
-                    internal_community_id, 
+                    None,  # No internal_community_id needed - using Tabs Platform ID
                     product_name, 
                     combo_product_report,
                     idx,
@@ -937,11 +860,13 @@ def process_data(dataframes):
                 print(f"          ✗ Could not fetch value from report sheet")
                 print(f"          → Skipping this row and tracking as unmapped")
                 # Track as unmapped customer
+                from api import lookup_customer_name_by_id
                 unmapped_customers.append({
                     'customer_id': customer_id,
+                    'customer_name': lookup_customer_name_by_id(customer_id),
                     'product_name': product_name,
                     'event_type_name': event_type_name,
-                    'report_type': report_type if not mapping_rows.empty else 'Not in Customer Mapping',
+                    'report_type': report_type,
                     'reason': 'Not found in bed count reports'
                 })
                 continue
@@ -1131,7 +1056,7 @@ def process_data(dataframes):
                 'event_type_name': event_type_name,
                 'datetime': current_date,
                 'value': final_value,
-                'differentiator': 0
+                'differentiator': ''
             }
             
             print(f"          Output Row:")

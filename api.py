@@ -545,6 +545,81 @@ def lookup_customer_id_by_name(customer_name):
     
     return None
 
+def lookup_customer_name_by_id(customer_id):
+    """
+    Lookup customer name from customer ID.
+    Uses cached customer list for performance.
+    
+    Args:
+        customer_id: Customer ID (UUID)
+    
+    Returns:
+        str: Customer name if found, empty string otherwise
+    """
+    if 'all_customers_cache' not in st.session_state:
+        customers = get_all_customers()
+        st.session_state['all_customers_cache'] = customers
+    else:
+        customers = st.session_state['all_customers_cache']
+    
+    for customer in customers:
+        if customer.get("id") == customer_id:
+            return customer.get("name", "")
+    
+    return ""
+
+def get_customer_report_type(customer_id):
+    """
+    Fetch customer details from Tabs API and extract Active Bed Report type from custom fields.
+    Uses caching to minimize API calls.
+    
+    Args:
+        customer_id: Customer ID (UUID)
+    
+    Returns:
+        str: Report type from "Active Bed Report" custom field, or None if not found
+    """
+    # Cache customer report types in session state
+    if 'customer_report_types_cache' not in st.session_state:
+        st.session_state['customer_report_types_cache'] = {}
+    
+    # Check cache first
+    if customer_id in st.session_state['customer_report_types_cache']:
+        return st.session_state['customer_report_types_cache'][customer_id]
+    
+    # Fetch from API
+    try:
+        url = f"https://integrators.prod.api.tabsplatform.com/v3/customers/{customer_id}"
+        headers = {"Authorization": st.session_state['tabs_api_key']}
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code == 200:
+            data = response.json()
+            custom_fields = data.get('payload', {}).get('customFields', [])
+            
+            # Look for "Active Bed Report" custom field
+            for field in custom_fields:
+                if field.get('customFieldName') == 'Active Bed Report':
+                    report_type = field.get('customFieldValue')
+                    # Cache the result
+                    st.session_state['customer_report_types_cache'][customer_id] = report_type
+                    print(f"  [get_customer_report_type] Customer {customer_id}: Report type = '{report_type}'")
+                    return report_type
+            
+            # Custom field not found - cache as None
+            print(f"  [get_customer_report_type] Customer {customer_id}: No 'Active Bed Report' custom field found")
+            st.session_state['customer_report_types_cache'][customer_id] = None
+            return None
+        else:
+            print(f"  [get_customer_report_type] API error for customer {customer_id}: Status {response.status_code}")
+            # Don't cache errors, return None to allow retry
+            return None
+    
+    except Exception as e:
+        print(f"  [get_customer_report_type] Exception fetching customer {customer_id}: {str(e)}")
+        # Don't cache errors
+        return None
+
 def lookup_or_create_contract(customer_id, contract_name):
     """
     Lookup existing contract or create a new one.
