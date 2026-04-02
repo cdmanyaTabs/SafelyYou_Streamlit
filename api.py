@@ -405,16 +405,31 @@ def get_excluded_customer_ids():
 def get_all_contracts():
     """
     Fetch all contracts from Tabs API.
+    Only retrieves contracts with status="PROCESSED".
     
     Returns:
         dict: API response with contracts data
     """
-    url = f"https://integrators.prod.api.tabsplatform.com/v3/contracts?limit=10000"
+    url = f"https://integrators.prod.api.tabsplatform.com/v3/contracts?limit=10000&filter=status:eq:PROCESSED"
     headers = {
         "Authorization": f"{st.session_state['tabs_api_key']}"
     }
     response = requests.get(url, headers=headers)
-    return response.json()
+    result = response.json()
+    
+    # Debug: Check if specific contract is in the response
+    TARGET_CONTRACT_ID = "5f8bb451-587a-41a1-add3-d9b5c9208326"
+    contracts_data = result.get("payload", {}).get("data", [])
+    contract_ids = [c.get("id") for c in contracts_data]
+    
+    print(f"[DEBUG_CONTRACT] Total contracts fetched: {len(contracts_data)}")
+    if TARGET_CONTRACT_ID in contract_ids:
+        print(f"[DEBUG_CONTRACT] ✓ Target contract {TARGET_CONTRACT_ID} FOUND in contracts")
+    else:
+        print(f"[DEBUG_CONTRACT] ✗ Target contract {TARGET_CONTRACT_ID} NOT FOUND in contracts")
+        print(f"[DEBUG_CONTRACT] Sample contract IDs (first 10): {contract_ids[:10]}")
+    
+    return result
 
     # Example response:
 #     {

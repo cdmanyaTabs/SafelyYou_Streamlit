@@ -472,12 +472,21 @@ def build_event_type_lookup(event_types_df):
     """
     event_type_lookup = {}
     
+    TARGET_EVENT_TYPE_ID = "b04dc31f-9e7a-4e65-8f15-9a45e1555c7f"  # MC beds
+    
     if not event_types_df.empty:
         for _, row in event_types_df.iterrows():
             event_type_id = row.get("id")
             event_type_name = row.get("name")
             if event_type_id and event_type_name:
                 event_type_lookup[event_type_id] = event_type_name
+    
+    print(f"[DEBUG_EVENT_TYPES] Total event types in lookup: {len(event_type_lookup)}")
+    if TARGET_EVENT_TYPE_ID in event_type_lookup:
+        print(f"[DEBUG_EVENT_TYPES] ✓ Target event type {TARGET_EVENT_TYPE_ID} FOUND: '{event_type_lookup[TARGET_EVENT_TYPE_ID]}'")
+    else:
+        print(f"[DEBUG_EVENT_TYPES] ✗ Target event type {TARGET_EVENT_TYPE_ID} NOT FOUND in lookup")
+        print(f"[DEBUG_EVENT_TYPES] Sample event types (first 10): {list(event_type_lookup.items())[:10]}")
     
     return event_type_lookup
 
@@ -543,8 +552,22 @@ def generate_usage_bt_report_from_api():
                 # Lookup customerId from contract
                 customer_id = contract_lookup.get(contract_id)
                 if not customer_id:
+                    # Debug: Check if this is the target contract that's missing
+                    if str(contract_id) == "5f8bb451-587a-41a1-add3-d9b5c9208326":
+                        print(f"[DEBUG_CONTRACT] ✗ Target contract {contract_id} NOT FOUND in contract lookup")
+                        print(f"[DEBUG_CONTRACT] This obligation will be skipped")
                     skipped_count += 1
                     continue
+                
+                # Debug: Check if this obligation is for target customer with target contract
+                if str(customer_id) == "9e660ece-132a-47ec-bb89-df1161c5395e" and str(contract_id) == "5f8bb451-587a-41a1-add3-d9b5c9208326":
+                    billing_schedule = obligation.get("billingSchedule", {})
+                    print(f"\n[DEBUG_TARGET_OBLIGATION] ✓ Found obligation for customer 9e660ece-132a-47ec-bb89-df1161c5395e")
+                    print(f"[DEBUG_TARGET_OBLIGATION] Contract ID: {contract_id}")
+                    print(f"[DEBUG_TARGET_OBLIGATION] Obligation ID: {obligation.get('id')}")
+                    print(f"[DEBUG_TARGET_OBLIGATION] Product Name: {billing_schedule.get('name')}")
+                    print(f"[DEBUG_TARGET_OBLIGATION] Billing Type: {billing_schedule.get('billingType')}")
+                    print(f"[DEBUG_TARGET_OBLIGATION] Event Type ID: {billing_schedule.get('eventTypeId')}")
                 
                 # Debug: Check if this is the target customer
                 if str(customer_id) == TARGET_DEBUG_CUSTOMER:
@@ -598,6 +621,17 @@ def generate_usage_bt_report_from_api():
                 event_type_name = ""
                 if event_type_id:
                     event_type_name = event_type_lookup.get(event_type_id, "")
+                    
+                    # Debug: Track the MC beds event type specifically
+                    if str(event_type_id) == "b04dc31f-9e7a-4e65-8f15-9a45e1555c7f":
+                        print(f"[DEBUG_MC_BEDS] Found obligation with MC beds event type")
+                        print(f"[DEBUG_MC_BEDS] Event Type ID: {event_type_id}")
+                        print(f"[DEBUG_MC_BEDS] Event Type Name from lookup: '{event_type_name}'")
+                        print(f"[DEBUG_MC_BEDS] Customer ID: {customer_id}")
+                        print(f"[DEBUG_MC_BEDS] Product Name: {product_name}")
+                        if not event_type_name:
+                            print(f"[DEBUG_MC_BEDS] ✗✗✗ EVENT TYPE NAME IS BLANK - This row will be filtered out!")
+
                 
                 # DEBUG: Track if target customer has blank event type
                 if str(customer_id) == "4a5a2962-bcf8-4a8b-a434-e1868072b0bd":
@@ -758,6 +792,12 @@ def process_data(dataframes):
             product_name = row[product_name_col]
             event_type_name = row[event_type_col]
             
+            if str(customer_id) == '9e660ece-132a-47ec-bb89-df1161c5395e':
+                print(f"\n🔍🔍🔍 DEBUG TARGET CUSTOMER FOUND IN USAGE BT REPORT 🔍🔍🔍")
+                print(f"🔍 Row {idx + 1}: customer_id={customer_id}")
+                print(f"🔍           product_name={product_name}")
+                print(f"🔍           event_type_name={event_type_name}")
+            
             # DEBUG: Track target customer through processing
             is_target = str(customer_id) == "4a5a2962-bcf8-4a8b-a434-e1868072b0bd"
             is_debug_target = str(customer_id) == TARGET_DEBUG_CUSTOMER
@@ -796,6 +836,9 @@ def process_data(dataframes):
             
             from api import get_customer_report_type
             report_type = get_customer_report_type(customer_id)
+            
+            if str(customer_id) == '9e660ece-132a-47ec-bb89-df1161c5395e':
+                print(f"🔍 DEBUG TARGET CUSTOMER: ID={customer_id}, report_type={report_type}, product_name={product_name}")
             
             if not report_type:
                 print(f"          ⚠ No 'Active Bed Report' custom field found for customer {customer_id}")
@@ -857,6 +900,8 @@ def process_data(dataframes):
                 continue
             
             if fetched_value is None:
+                if str(customer_id) == '9e660ece-132a-47ec-bb89-df1161c5395e':
+                    print(f"🔍 DEBUG TARGET CUSTOMER: fetched_value is None, report_type={report_type}, adding to unmapped")
                 print(f"          ✗ Could not fetch value from report sheet")
                 print(f"          → Skipping this row and tracking as unmapped")
                 # Track as unmapped customer
@@ -1067,6 +1112,10 @@ def process_data(dataframes):
             print(f"          ✓ Row added to output")
             
         except Exception as e:
+            if str(customer_id) == '9e660ece-132a-47ec-bb89-df1161c5395e':
+                print(f"🔍 DEBUG TARGET CUSTOMER: Exception caught! {str(e)}")
+                import traceback
+                traceback.print_exc()
             print(f"  ✗ ERROR processing row {idx}: {str(e)}")
             print(f"  → Skipping this row")
             continue
@@ -1089,6 +1138,12 @@ def process_by_community(internal_community_id, product_name, community_quantity
     """
     print(f"\n          [BY_COMMUNITY_LOGIC] Starting...")
     
+    if str(customer_id) == '9e660ece-132a-47ec-bb89-df1161c5395e':
+        print(f"🔍 DEBUG TARGET CUSTOMER: Entered process_by_community function")
+        print(f"🔍   - customer_id: {customer_id}")
+        print(f"🔍   - product_name: {product_name}")
+        print(f"🔍   - community_quantity shape: {community_quantity.shape}")
+    
     community_row = None
     
     # NEW: Try direct lookup by Tabs Platform ID first
@@ -1099,6 +1154,12 @@ def process_by_community(internal_community_id, product_name, community_quantity
             direct_rows = community_quantity[
                 community_quantity[tabs_platform_id_col] == customer_id
             ]
+            
+            if str(customer_id) == '9e660ece-132a-47ec-bb89-df1161c5395e':
+                print(f"🔍 DEBUG TARGET CUSTOMER in By Community lookup: rows_found={len(direct_rows)}, product_name={product_name}")
+                if not direct_rows.empty:
+                    print(f"🔍 DEBUG: Sample row data: {direct_rows.iloc[0].to_dict()}")
+            
             if not direct_rows.empty:
                 print(f"          [BY_COMMUNITY_LOGIC] ✓ Found by Tabs Platform ID (direct lookup)")
                 if len(direct_rows) > 1:
@@ -1127,6 +1188,11 @@ def process_by_community(internal_community_id, product_name, community_quantity
     # Determine which column to fetch based on product name
     print(f"          [BY_COMMUNITY_LOGIC] Checking product name: '{product_name}'")
     
+    if str(customer_id) == '9e660ece-132a-47ec-bb89-df1161c5395e':
+        print(f"🔍 DEBUG TARGET CUSTOMER: About to check product matching")
+        print(f"🔍   - community_row found: {community_row is not None}")
+        print(f"🔍   - checking for 'Respond' in: {product_name}")
+    
     if check_product_contains(product_name, ['Respond']):
         print(f"          [BY_COMMUNITY_LOGIC] ✓ 'Respond' found in product name")
         print(f"          [BY_COMMUNITY_LOGIC] → Using column: 'Respond Beds'")
@@ -1136,6 +1202,8 @@ def process_by_community(internal_community_id, product_name, community_quantity
         return fetched_value
     
     elif check_product_contains(product_name, ['Aware']):
+        if str(customer_id) == '9e660ece-132a-47ec-bb89-df1161c5395e':
+            print(f"🔍 DEBUG TARGET CUSTOMER: 'Aware' matched!")
         print(f"          [BY_COMMUNITY_LOGIC] ✓ 'Aware' found in product name")
         print(f"          [BY_COMMUNITY_LOGIC] → Using column: 'Aware - Virtual or Wellness Checkins Active Beds'")
         fetched_value = community_row['Aware - Virtual or Wellness Checkins Active Beds']
@@ -1144,6 +1212,9 @@ def process_by_community(internal_community_id, product_name, community_quantity
         return fetched_value
     
     elif check_product_contains(product_name, get_addon_variants()):
+        if str(customer_id) == '9e660ece-132a-47ec-bb89-df1161c5395e':
+            print(f"🔍 DEBUG TARGET CUSTOMER: Addon variant matched!")
+            print(f"🔍   - addon_variants checked: {get_addon_variants()}")
         print(f"          [BY_COMMUNITY_LOGIC] ✓ Addon variant found in product name")
         print(f"          [BY_COMMUNITY_LOGIC] → Using column: 'Addon - Aware Secure Virtual Checkins + Clarity Presence Tracking Beds'")
         fetched_value = community_row['Addon - Aware Secure Virtual Checkins + Clarity Presence Tracking Beds']
@@ -1154,6 +1225,12 @@ def process_by_community(internal_community_id, product_name, community_quantity
     else:
         print(f"          [BY_COMMUNITY_LOGIC] ✗ No matching product keyword found")
         print(f"          [BY_COMMUNITY_LOGIC] Checked for: Respond, Aware, Addon variants")
+        
+        if str(customer_id) == '9e660ece-132a-47ec-bb89-df1161c5395e':
+            print(f"🔍 DEBUG TARGET CUSTOMER: No product match in By Community - returning None")
+            print(f"🔍   - Product name: '{product_name}'")
+            print(f"🔍   - Addon variants list: {get_addon_variants()}")
+        
         return None
 
 # ============================================================================
