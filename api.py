@@ -23,31 +23,116 @@ def get_customer_custom_field():
     response = requests.get(url, headers=headers)
     return response.json()
 
-def get_all_obligations():
+def get_all_billing_terms():
+    """
+    Fetch all billing terms from contracts that match the filters:
+    - billingType == "UNIT"
+    - billingStartDate <= last day of previous month
+    - billingEndDate >= last day of previous month
+    
+    Returns data in the same format as the old obligations endpoint for compatibility.
+    """
     # Calculate last day of previous month
     today = datetime.now()
     first_day_current = datetime(today.year, today.month, 1)
     last_day_previous = first_day_current - timedelta(days=1)
     date_filter_string = last_day_previous.strftime('%Y-%m-%d')
-    url = f"https://integrators.prod.api.tabsplatform.com/v3/obligations?limit=10000&filter=serviceEndDate:gte:{date_filter_string},endDate:gte:{date_filter_string},startDate:lte:{date_filter_string}"
-    headers = {
-        "Authorization": f"{st.session_state['tabs_api_key']}"
+    
+    # DEBUG: Log filter
+    logging.info("\n[DEBUG_API] get_all_billing_terms() called")
+    logging.info(f"[DEBUG_API] Date filter: billingStartDate <= {date_filter_string}, billingEndDate >= {date_filter_string}")
+    logging.info(f"[DEBUG_API] Billing type filter: UNIT only")
+    
+    print(f"[DEBUG_API] Fetching all contracts...")
+    
+    # Step 1: Fetch all contracts
+    contracts_response = get_all_contracts()
+    contracts_data = contracts_response.get("payload", {}).get("data", [])
+    print(f"[DEBUG_API] Retrieved {len(contracts_data)} contracts")
+    
+    # Step 2: Loop through contracts and fetch billing terms
+    all_billing_data = []
+    skipped_contracts = 0
+    processed_contracts = 0
+    
+    for idx, contract in enumerate(contracts_data, 1):
+        contract_id = contract.get("id")
+        customer_id = contract.get("customerId")
+        
+        # Skip contracts without customer ID
+        if not customer_id:
+            skipped_contracts += 1
+            continue
+        
+        # Progress logging every 100 contracts
+        if idx % 100 == 0:
+            print(f"[DEBUG_API] Processing contract {idx}/{len(contracts_data)}...")
+        
+        # Fetch billing terms for this contract
+        billing_terms_response = get_billing_terms_for_contract(contract_id)
+        if not billing_terms_response:
+            skipped_contracts += 1
+            continue
+        
+        billing_terms = billing_terms_response.get("payload", {}).get("data", [])
+        
+        # Step 3: Filter and transform billing terms
+        for billing_term in billing_terms:
+            # Filter 1: Only UNIT billing type
+            billing_type = billing_term.get("billingType")
+            if billing_type != "UNIT":
+                continue
+            
+            # Filter 2: Date filtering
+            billing_start_date_str = billing_term.get("billingStartDate", "")
+            billing_end_date_str = billing_term.get("billingEndDate", "")
+            
+            try:
+                # Parse dates (handle both date and datetime strings)
+                if billing_start_date_str:
+                    billing_start_date = datetime.strptime(billing_start_date_str.split('T')[0], '%Y-%m-%d')
+                else:
+                    continue
+                
+                if billing_end_date_str:
+                    billing_end_date = datetime.strptime(billing_end_date_str.split('T')[0], '%Y-%m-%d')
+                else:
+                    continue
+                
+                # Apply date filter: billingStartDate <= last_day_previous AND billingEndDate >= last_day_previous
+                if billing_start_date <= last_day_previous and billing_end_date >= last_day_previous:
+                    # Transform to match old obligations format
+                    transformed_data = {
+                        "contractId": contract_id,
+                        "customerId": customer_id,
+                        "billingSchedule": {
+                            "name": billing_term.get("name", ""),
+                            "billingType": billing_type,
+                            "eventTypeId": billing_term.get("eventTypeId"),
+                            "startDate": billing_start_date_str,
+                            "endDate": billing_end_date_str
+                        }
+                    }
+                    all_billing_data.append(transformed_data)
+                    processed_contracts += 1
+            except Exception as e:
+                logging.info(f"[DEBUG_API] Error parsing dates for contract {contract_id}: {str(e)}")
+                continue
+    
+    # Create response in same format as old obligations endpoint
+    result = {
+        "payload": {
+            "data": all_billing_data
+        }
     }
-    response = requests.get(url, headers=headers)
-    result = response.json()
     
-    # DEBUG: Log filter and count
-    logging.info("\n[DEBUG_API] get_all_obligations() called")
-    logging.info(f"[DEBUG_API] Date filter: serviceEndDate >= {date_filter_string}, endDate >= {date_filter_string}, startDate <= {date_filter_string}")
-    obligations = result.get("payload", {}).get("data", [])
-    logging.info(f"[DEBUG_API] Total obligations fetched: {len(obligations)}")
+    # DEBUG: Log results
+    logging.info(f"[DEBUG_API] Total billing terms fetched: {len(all_billing_data)}")
+    logging.info(f"[DEBUG_API] Processed contracts: {processed_contracts}")
+    logging.info(f"[DEBUG_API] Skipped contracts: {skipped_contracts}")
     
-    # DEBUG: Check for specific customer's obligations
-    target_customer_id = "4a5a2962-bcf8-4a8b-a434-e1868072b0bd"
-    logging.info(f"[DEBUG_API] Searching for target customer: {target_customer_id}")
-    
-    # Also keep print for immediate feedback
-    print(f"[DEBUG_API] Fetched {len(obligations)} obligations")
+    print(f"[DEBUG_API] Fetched {len(all_billing_data)} billing terms (UNIT type, date filtered)")
+    print(f"[DEBUG_API] Processed {processed_contracts} contracts, skipped {skipped_contracts}")
     
     return result
 # Example response:
@@ -430,6 +515,31 @@ def get_all_contracts():
         print(f"[DEBUG_CONTRACT] Sample contract IDs (first 10): {contract_ids[:10]}")
     
     return result
+
+def get_billing_terms_for_contract(contract_id):
+    """
+    Fetch billing terms for a specific contract from Tabs API.
+    
+    Args:
+        contract_id: The contract ID to fetch billing terms for
+        
+    Returns:
+        dict: API response with billing terms data, or None if request fails
+    """
+    url = f"https://integrators.prod.api.tabsplatform.com/v3/contracts/{contract_id}/billing-terms"
+    headers = {
+        "Authorization": f"{st.session_state['tabs_api_key']}"
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=30)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"[DEBUG_BILLING_TERMS] Failed to fetch billing terms for contract {contract_id}: Status {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"[DEBUG_BILLING_TERMS] Error fetching billing terms for contract {contract_id}: {str(e)}")
+        return None
 
     # Example response:
 #     {

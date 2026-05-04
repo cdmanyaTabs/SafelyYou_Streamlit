@@ -506,34 +506,28 @@ def generate_usage_bt_report_from_api():
     
     try:
         # Import API functions
-        from api import get_all_obligations, get_all_contracts
+        from api import get_all_billing_terms, get_all_contracts
         from api import get_event_ids, get_excluded_customer_ids
         
-        # Step 1: Fetch obligations
-        print("\n[API] Fetching obligations from Tabs API...")
-        obligations_response = get_all_obligations()
+        # Step 1: Fetch billing terms
+        print("\n[API] Fetching billing terms from Tabs API...")
+        obligations_response = get_all_billing_terms()
         obligations_data = obligations_response.get("payload", {}).get("data", [])
-        print(f"      ✓ Retrieved {len(obligations_data)} obligations")
+        print(f"      ✓ Retrieved {len(obligations_data)} billing terms (UNIT type, date filtered)")
         
-        # Step 2: Fetch contracts
-        print("\n[API] Fetching contracts from Tabs API...")
-        contracts_response = get_all_contracts()
-        contract_lookup = build_contract_lookup(contracts_response)
-        print(f"      ✓ Built contract lookup with {len(contract_lookup)} contracts")
-        
-        # Step 3: Fetch event types
+        # Step 2: Fetch event types (contract fetching now done in get_all_billing_terms)
         print("\n[API] Fetching event types from Tabs API...")
         event_types_df = get_event_ids()
         event_type_lookup = build_event_type_lookup(event_types_df)
         print(f"      ✓ Built event type lookup with {len(event_type_lookup)} event types")
         
-        # Step 3.5: Build customer exclusion list
+        # Step 3: Build customer exclusion list
         print("\n[API] Building customer exclusion list...")
         excluded_customer_ids = get_excluded_customer_ids()
         print(f"      ✓ Found {len(excluded_customer_ids)} customers to exclude (with specified parent IDs)")
         
-        # Step 4: Process obligations and build report rows
-        print("\n[API] Processing obligations to build Usage BT Report...")
+        # Step 4: Process billing terms and build report rows
+        print("\n[API] Processing billing terms to build Usage BT Report...")
         report_rows = []
         skipped_count = 0
         
@@ -543,19 +537,11 @@ def generate_usage_bt_report_from_api():
         
         for obligation in obligations_data:
             try:
-                # Extract contractId
+                # Extract contractId and customerId (now directly available from billing terms)
                 contract_id = obligation.get("contractId")
-                if not contract_id:
-                    skipped_count += 1
-                    continue
+                customer_id = obligation.get("customerId")
                 
-                # Lookup customerId from contract
-                customer_id = contract_lookup.get(contract_id)
-                if not customer_id:
-                    # Debug: Check if this is the target contract that's missing
-                    if str(contract_id) == "5f8bb451-587a-41a1-add3-d9b5c9208326":
-                        print(f"[DEBUG_CONTRACT] ✗ Target contract {contract_id} NOT FOUND in contract lookup")
-                        print(f"[DEBUG_CONTRACT] This obligation will be skipped")
+                if not contract_id or not customer_id:
                     skipped_count += 1
                     continue
                 

@@ -23,14 +23,16 @@ streamlit run main.py
 
 ## API
 
-- Get All Customers by Customer Custom Field - Tenant ID
-- Get Integration Items
-- Get Events
+- Get All Products
+- Create Obligations
 
 ## Files to Upload:
-1. Price Book ZIP
-2. Prepaid 
-3. Enterprise Support
+1. Monthly Minimums
+2. Customer Mapping
+3. By Community Report
+4. By Business Unit Report
+5. By Combo Report
+6. Flat BTs
 
 ## Project Structure
 
@@ -42,14 +44,6 @@ streamlit run main.py
 
 
 Things to store
-CustomerIDs
-EventToTrackIDs
-IntegrationItemIDs
+Tabs Obligations
 
-1. Transform BT sheet
-2. Filter which customers / BTs are in Raw Usage
-3. Add Enterprise Support + Prepaid
-4. Create Contracts
-5. Upload BTs
-6. Mark Contract as Processed
-7. Prep Usage File CSV
+
