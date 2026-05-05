@@ -926,14 +926,27 @@ def process_data(dataframes):
             product_keywords = extract_product_keywords(product_name)
             print(f"          → Extracted keywords from '{product_name}': {product_keywords}")
             
-            # Get all rows with matching customer_id
+            # Get all rows with matching customer_id (with robust string normalization)
             print(f"          [CUSTOMER_ID_FILTER] Searching for customer ID: '{customer_id}' (type: {type(customer_id).__name__})")
             if not min_customer_id_col:
                 print(f"          ⚠ WARNING: Could not find 'customer ID' column in minimum_report!")
                 print(f"          Available columns: {list(minimum_report.columns)}")
                 customer_min_rows = pd.DataFrame()
             else:
-                customer_min_rows = minimum_report[minimum_report[min_customer_id_col] == customer_id]
+                # Normalize customer_id to string and strip whitespace
+                customer_id_normalized = str(customer_id).strip().lower()
+                print(f"          [CUSTOMER_ID_FILTER] Normalized search ID: '{customer_id_normalized}'")
+                
+                # Normalize the customer ID column in minimum_report for comparison
+                min_report_ids_normalized = minimum_report[min_customer_id_col].astype(str).str.strip().str.lower()
+                
+                # Debug: Show a sample of IDs from minimum report
+                if len(minimum_report) > 0:
+                    sample_ids = min_report_ids_normalized.head(3).tolist()
+                    print(f"          [CUSTOMER_ID_FILTER] Sample IDs from minimum report: {sample_ids}")
+                
+                # Perform case-insensitive, whitespace-trimmed comparison
+                customer_min_rows = minimum_report[min_report_ids_normalized == customer_id_normalized]
             print(f"          [CUSTOMER_ID_FILTER] Found {len(customer_min_rows)} row(s) matching customer ID")
             
             if customer_min_rows.empty:
