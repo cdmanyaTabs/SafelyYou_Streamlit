@@ -418,9 +418,29 @@ def parse_active_date(date_value, current_date=None):
     if date_str == '' or date_str.lower() == 'nan':
         return None
     
+    # Try multiple common date formats explicitly first
+    common_formats = [
+        '%Y-%m-%d',           # 2025-09-01
+        '%m/%d/%Y',           # 09/01/2025
+        '%d/%m/%Y',           # 01/09/2025
+        '%Y/%m/%d',           # 2025/09/01
+        '%m-%d-%Y',           # 09-01-2025
+        '%d-%m-%Y',           # 01-09-2025
+        '%Y-%m-%d %H:%M:%S',  # 2025-09-01 00:00:00
+        '%m/%d/%y',           # 09/01/25
+        '%d/%m/%y',           # 01/09/25
+    ]
+    
+    for fmt in common_formats:
+        try:
+            parsed_date = datetime.strptime(date_str, fmt)
+            return parsed_date
+        except (ValueError, TypeError):
+            continue
+    
+    # Fallback to pandas to_datetime (without deprecated parameter)
     try:
-        # Try parsing with pandas to_datetime (handles multiple formats)
-        parsed_date = pd.to_datetime(date_str, errors='coerce', infer_datetime_format=True)
+        parsed_date = pd.to_datetime(date_str, errors='coerce')
         
         # Check if parsing was successful
         if pd.isna(parsed_date):
